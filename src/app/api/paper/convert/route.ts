@@ -7,7 +7,8 @@ import { GoogleGenAI } from '@google/genai'
 import fs from 'fs'
 import path from 'path'
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || 'AIzaSyAewbplqy2qS7B8ecDuJ1q1hXyAhkGGLKo'
+// API Key: MUST be set via environment variable (not hardcoded to avoid GitHub leak detection)
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || ''
 
 // Prompt template based on 研报论文解读模板-v1.md
 const SYSTEM_PROMPT = `#### **角色与目标**
@@ -90,10 +91,10 @@ def alpha_trend_001(df, params=None):
 
 请为每个发现的策略都生成对应的Python因子代码。`
 
-// Models to try in order
+// Models to try in order (most capable first)
 const MODELS = [
-  'gemini-2.5-pro',
   'gemini-2.5-flash',
+  'gemini-2.5-pro',
   'gemini-2.0-flash',
 ]
 
@@ -125,8 +126,35 @@ function saveReport(title: string, content: string): string | null {
   }
 }
 
+// Retry helper with exponential backoff
+async function retryWithBackoff<T>(
+  fn: () => Promise<T>,
+  maxRetries: number = 3,
+  baseDelayMs: number = 1000
+): Promise<T> {
+  let lastError: unknown
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await fn()
+    } catch (e: unknown) {
+      lastError = e
+      const errMsg = e instanceof Error ? e.message : String(e)
+      // Don't retry on auth errors (leaked key, invalid key)
+      if (errMsg.includes('403') || errMsg.includes('401') || errMsg.includes('API_KEY_INVALID') || errMsg.includes('leaked')) {
+        throw e
+      }
+      // Exponential backoff for retryable errors (429, 500, 503)
+      if (attempt < maxRetries - 1) {
+        const delay = baseDelayMs * Math.pow(2, attempt) + Math.random() * 500
+        console.log(`[Gemini] Attempt ${attempt + 1} failed, retrying in ${Math.round(delay)}ms...`)
+        await new Promise(resolve => setTimeout(resolve, delay))
+      }
+    }
+  }
+  throw lastError
+}
+
 function parseReport(fullReport: string) {
-  // Extract Part 1
   let part1 = ''
   let part2 = ''
 
@@ -140,7 +168,7 @@ function parseReport(fullReport: string) {
     part2 = part2Match[1].trim()
   }
 
-  // If regex didn't work, try splitting on sections
+  // Fallback: split on section markers
   if (!part1 && !part2) {
     const sections = fullReport.split(/^#{2,3}\s+第/m)
     if (sections.length >= 2) {
@@ -152,7 +180,7 @@ function parseReport(fullReport: string) {
     }
   }
 
-  // Extract factor names
+  // Extract factor names from code blocks
   const factorNames = [...fullReport.matchAll(/def\s+(alpha_\w+)/g)]
   const factors = factorNames.slice(0, 10).map((match, i) => ({
     name: match[1],
@@ -168,7 +196,6 @@ function parseReport(fullReport: string) {
     })
   }
 
-  // Extract title from part1
   let title = '论文分析报告'
   const titleMatch = part1.match(/####?\s*1\.\s*标题\s*\n+\*?\s*(.+)/m)
   if (titleMatch) {
@@ -180,6 +207,14 @@ function parseReport(fullReport: string) {
 
 export async function POST(request: NextRequest) {
   try {
+    // Check API key first
+    if (!GEMINI_API_KEY) {
+      return NextResponse.json({
+        success: false,
+        error: '未配置 GEMINI_API_KEY。请在项目根目录创建 .env.local 文件并添加：GEMINI_API_KEY=你的密钥\n\n获取密钥：https://aistudio.google.com/apikey'
+      })
+    }
+
     const body = await request.json()
     const { url, text, filename } = body
 
@@ -190,13 +225,11 @@ export async function POST(request: NextRequest) {
       content = text
       sourceTitle = filename || '粘贴内容'
     } else if (url) {
-      // Fetch URL content
       try {
         const res = await fetch(url, {
           headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)' }
         })
         content = await res.text()
-        // Strip HTML tags for basic extraction
         content = content.replace(/<script[\s\S]*?<\/script>/gi, '')
           .replace(/<style[\s\S]*?<\/style>/gi, '')
           .replace(/<[^>]+>/g, ' ')
@@ -204,7 +237,7 @@ export async function POST(request: NextRequest) {
           .trim()
         sourceTitle = url
       } catch {
-        return NextResponse.json({ success: false, error: '无法获取URL内容' })
+        return NextResponse.json({ success: false, error: '无法获取URL内容，请检查链接是否正确' })
       }
     }
 
@@ -218,30 +251,52 @@ export async function POST(request: NextRequest) {
       content = content.slice(0, maxChars) + '\n\n[内容已截断...]'
     }
 
-    // Try models in order
+    // Try models in order with retry
     const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY })
     let fullReport = ''
     let usedModel = ''
+    const errors: string[] = []
 
     for (const model of MODELS) {
       try {
-        const response = await ai.models.generateContent({
-          model,
-          contents: `${SYSTEM_PROMPT}\n\n---\n\n请分析以下内容并生成报告：\n\n${content}`,
-          config: {
-            maxOutputTokens: 8192,
-            temperature: 0.3,
-          },
-        })
-        
+        console.log(`[Gemini] Trying model: ${model}`)
+        const response = await retryWithBackoff(async () => {
+          return await ai.models.generateContent({
+            model,
+            contents: `${SYSTEM_PROMPT}\n\n---\n\n请分析以下内容并生成报告：\n\n${content}`,
+            config: {
+              maxOutputTokens: 8192,
+              temperature: 0.3,
+            },
+          })
+        }, 2, 2000) // 2 retries, 2s base delay
+
         fullReport = response.text || ''
         if (fullReport) {
           usedModel = model
+          console.log(`[Gemini] Success with model: ${model}`)
           break
         }
       } catch (e: unknown) {
         const errMsg = e instanceof Error ? e.message : String(e)
-        console.log(`Model ${model} failed: ${errMsg}, trying next...`)
+        console.log(`[Gemini] Model ${model} failed: ${errMsg.slice(0, 150)}`)
+        
+        // Parse specific error types for user-friendly messages
+        if (errMsg.includes('leaked') || errMsg.includes('API_KEY_INVALID')) {
+          return NextResponse.json({
+            success: false,
+            error: 'API Key 已失效（被 Google 检测为泄露）。请前往 https://aistudio.google.com/apikey 生成新的 API Key，然后在 .env.local 文件中更新 GEMINI_API_KEY 的值。'
+          })
+        }
+        if (errMsg.includes('403')) {
+          errors.push(`${model}: 权限不足`)
+        } else if (errMsg.includes('429')) {
+          errors.push(`${model}: 请求频率超限`)
+        } else if (errMsg.includes('404')) {
+          errors.push(`${model}: 模型不可用`)
+        } else {
+          errors.push(`${model}: ${errMsg.slice(0, 80)}`)
+        }
         continue
       }
     }
@@ -249,7 +304,7 @@ export async function POST(request: NextRequest) {
     if (!fullReport) {
       return NextResponse.json({
         success: false,
-        error: '所有 Gemini 模型调用失败，请稍后重试'
+        error: `所有模型调用失败：\n${errors.join('\n')}\n\n请检查 API Key 是否有效或稍后重试。`
       })
     }
 
@@ -273,6 +328,6 @@ export async function POST(request: NextRequest) {
     })
   } catch (e: unknown) {
     const errMsg = e instanceof Error ? e.message : String(e)
-    return NextResponse.json({ success: false, error: errMsg })
+    return NextResponse.json({ success: false, error: `服务器错误：${errMsg}` })
   }
 }
