@@ -21,9 +21,8 @@ function getHugoPath() {
     return VERCEL_HUGO_PATH;
   }
   // 本地开发：优先用软链接，不存在则用 Hugo 源目录
-  const localSymlink = LOCAL_HUGO_PATH;
-  if (fs.existsSync(localSymlink)) {
-    return localSymlink;
+  if (fs.existsSync(LOCAL_HUGO_PATH)) {
+    return LOCAL_HUGO_PATH;
   }
   // 备选：直接用 Hugo 源目录
   return '/Users/alpha/Documents/learn/openclaw_project/teamwork_html/docs/insights';
@@ -47,14 +46,19 @@ export interface Report extends ReportMeta {
 export async function getIndustryReports(): Promise<Report[]> {
   const HUGO_PATH = getHugoPath();
   try {
-    const dir = path.join(HUGO_PATH, 'research/industries');
+    // Vercel: public/hugo-data/industries
+    // 本地: insights/research/industries
+    const dir = IS_VERCEL 
+      ? path.join(HUGO_PATH, 'industries')
+      : path.join(HUGO_PATH, 'research/industries');
+    
     if (!fs.existsSync(dir)) {
       console.log('[Hugo] 目录不存在:', dir);
       return [];
     }
     
     const files = fs.readdirSync(dir).filter(f => f.endsWith('.md'));
-    console.log('[Hugo] 找到行业报告:', files.length, '个');
+    console.log('[Hugo] 找到行业报告:', files.length, '个, 路径:', dir);
     
     return files
       .map(file => {
@@ -82,14 +86,19 @@ export async function getIndustryReports(): Promise<Report[]> {
 export async function getCompanyReports(): Promise<Report[]> {
   const HUGO_PATH = getHugoPath();
   try {
-    const dir = path.join(HUGO_PATH, 'research/companies');
+    // Vercel: public/hugo-data/companies
+    // 本地: insights/research/companies
+    const dir = IS_VERCEL 
+      ? path.join(HUGO_PATH, 'companies')
+      : path.join(HUGO_PATH, 'research/companies');
+    
     if (!fs.existsSync(dir)) {
       console.log('[Hugo] 目录不存在:', dir);
       return [];
     }
     
     const files = fs.readdirSync(dir).filter(f => f.endsWith('.md'));
-    console.log('[Hugo] 找到企业报告:', files.length, '个');
+    console.log('[Hugo] 找到企业报告:', files.length, '个, 路径:', dir);
     
     return files
       .map(file => {
@@ -117,14 +126,17 @@ export async function getCompanyReports(): Promise<Report[]> {
 export async function getDailyReports(): Promise<Report[]> {
   const HUGO_PATH = getHugoPath();
   try {
+    // Vercel: public/hugo-data/daily-report
+    // 本地: insights/daily-report
     const dir = path.join(HUGO_PATH, 'daily-report');
+    
     if (!fs.existsSync(dir)) {
       console.log('[Hugo] 目录不存在:', dir);
       return [];
     }
     
     const files = fs.readdirSync(dir).filter(f => f.endsWith('.md'));
-    console.log('[Hugo] 找到每日报告:', files.length, '个');
+    console.log('[Hugo] 找到每日报告:', files.length, '个, 路径:', dir);
     
     return files
       .map(file => {
@@ -166,10 +178,14 @@ export async function getReport(category: string, slug: string): Promise<Report 
   
   switch (category) {
     case 'industry':
-      dir = path.join(HUGO_PATH, 'research/industries');
+      dir = IS_VERCEL 
+        ? path.join(HUGO_PATH, 'industries')
+        : path.join(HUGO_PATH, 'research/industries');
       break;
     case 'company':
-      dir = path.join(HUGO_PATH, 'research/companies');
+      dir = IS_VERCEL 
+        ? path.join(HUGO_PATH, 'companies')
+        : path.join(HUGO_PATH, 'research/companies');
       break;
     case 'daily':
       dir = path.join(HUGO_PATH, 'daily-report');
