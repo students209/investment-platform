@@ -1,0 +1,11 @@
+# 投资研究平台 - Python 依赖
+fastapi==0.135.2
+uvicorn[standard]==0.42.0
+pandas==3.0.1
+polars==1.39.3
+akshare==1.18.46
+anthropic==0.86.0
+sqlalchemy==2.0.48
+pydantic==2.12.5
+python-multipart==0.0.22
+aiofiles==25.1.0
