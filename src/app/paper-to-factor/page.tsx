@@ -31,6 +31,8 @@ export default function PaperToFactorPage() {
   const [activeTab, setActiveTab] = useState<'part1' | 'part2' | 'factors' | 'raw'>('part1')
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [uploadedFileName, setUploadedFileName] = useState('')
+  const [fileBase64, setFileBase64] = useState('')
+  const [mimeType, setMimeType] = useState('')
 
   async function handleConvert() {
     if (!paperUrl && !paperText && !uploadedFileName) {
@@ -47,6 +49,8 @@ export default function PaperToFactorPage() {
         url: inputMode === 'url' ? paperUrl : undefined,
         text: paperText || undefined,
         filename: uploadedFileName || undefined,
+        fileBase64: inputMode === 'file' ? fileBase64 : undefined,
+        mimeType: inputMode === 'file' ? mimeType : undefined,
       })
 
       if (data.success) {
@@ -66,10 +70,15 @@ export default function PaperToFactorPage() {
       setUploadedFileName(file.name)
       const reader = new FileReader()
       reader.onload = (e) => {
-        const content = e.target?.result as string
-        setPaperText(content)
+        const result = e.target?.result as string
+        if (result && result.includes(',')) {
+          const base64 = result.split(',')[1]
+          setFileBase64(base64)
+          setMimeType(file.type || 'application/pdf')
+          setPaperText('') // 清空可能冲突的文本输入
+        }
       }
-      reader.readAsText(file)
+      reader.readAsDataURL(file)
     }
   }
 

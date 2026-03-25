@@ -218,39 +218,55 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { url, text, filename } = body
+    const { url, text, filename, fileBase64, mimeType } = body
 
     let content = ''
     let sourceTitle = '未命名'
+    let promptContents: any
 
-    if (text) {
-      content = text
-      sourceTitle = filename || '粘贴内容'
-    } else if (url) {
-      try {
-        const res = await fetch(url, {
-          headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)' }
-        })
-        content = await res.text()
-        content = content.replace(/<script[\s\S]*?<\/script>/gi, '')
-          .replace(/<style[\s\S]*?<\/style>/gi, '')
-          .replace(/<[^>]+>/g, ' ')
-          .replace(/\s+/g, ' ')
-          .trim()
-        sourceTitle = url
-      } catch {
-        return NextResponse.json({ success: false, error: '无法获取URL内容，请检查链接是否正确' })
+    if (fileBase64) {
+      sourceTitle = filename || '上传文档'
+      promptContents = [
+        `${SYSTEM_PROMPT}\n\n---\n\n请分析以下提供的文档内容并严格按照模板要求生成报告：`,
+        {
+          inlineData: {
+            data: fileBase64,
+            mimeType: mimeType || 'application/pdf',
+          },
+        },
+      ]
+    } else {
+      if (text) {
+        content = text
+        sourceTitle = filename || '粘贴内容'
+      } else if (url) {
+        try {
+          const res = await fetch(url, {
+            headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)' }
+          })
+          content = await res.text()
+          content = content.replace(/<script[\s\S]*?<\/script>/gi, '')
+            .replace(/<style[\s\S]*?<\/style>/gi, '')
+            .replace(/<[^>]+>/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim()
+          sourceTitle = url
+        } catch {
+          return NextResponse.json({ success: false, error: '无法获取URL内容，请检查链接是否正确' })
+        }
       }
-    }
 
-    if (!content) {
-      return NextResponse.json({ success: false, error: '请提供论文内容' })
-    }
+      if (!content) {
+        return NextResponse.json({ success: false, error: '请提供论文内容或上传文件' })
+      }
 
-    // Truncate if too long
-    const maxChars = 100000
-    if (content.length > maxChars) {
-      content = content.slice(0, maxChars) + '\n\n[内容已截断...]'
+      // Truncate if too long
+      const maxChars = 100000
+      if (content.length > maxChars) {
+        content = content.slice(0, maxChars) + '\n\n[内容已截断...]'
+      }
+      
+      promptContents = `${SYSTEM_PROMPT}\n\n---\n\n请分析以下内容并严格按照模板要求生成报告：\n\n${content}`
     }
 
     // Try models in order with retry
@@ -265,7 +281,7 @@ export async function POST(request: NextRequest) {
         const response = await retryWithBackoff(async () => {
           return await ai.models.generateContent({
             model,
-            contents: `${SYSTEM_PROMPT}\n\n---\n\n请分析以下内容并生成报告：\n\n${content}`,
+            contents: promptContents,
             config: {
               maxOutputTokens: 8192,
               temperature: 0.3,
