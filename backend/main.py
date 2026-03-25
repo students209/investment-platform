@@ -3,7 +3,7 @@
 """
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from api import market, factors, risk
+from api import market, factors, risk, paper
 
 app = FastAPI(
     title="投资研究平台 API",
@@ -24,6 +24,7 @@ app.add_middleware(
 app.include_router(market.router, prefix="/api/market", tags=["行情"])
 app.include_router(factors.router, prefix="/api/factors", tags=["因子"])
 app.include_router(risk.router, prefix="/api/risk", tags=["风控"])
+app.include_router(paper.router, prefix="/api/paper", tags=["论文转因子"])
 
 @app.get("/")
 async def root():
