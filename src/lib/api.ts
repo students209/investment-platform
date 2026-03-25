@@ -5,7 +5,7 @@
  * 生产环境: https://c438b1faeb531385-217-116-174-241.serveousercontent.com
  */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://4b762502c17ec6d7-217-116-174-241.serveousercontent.com';
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://99134092f1905aa6-217-116-174-241.serveousercontent.com';
 
 async function fetchAPI(endpoint: string) {
   try {
