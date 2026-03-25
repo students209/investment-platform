@@ -91,6 +91,7 @@ export async function convertPaper(data: {
   filename?: string;
   fileBase64?: string;
   mimeType?: string;
+  model?: string;
 }) {
   const res = await fetch('/api/paper/convert', {
     method: 'POST',

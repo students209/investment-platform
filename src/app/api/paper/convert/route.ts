@@ -122,7 +122,7 @@ function saveReport(title: string, content: string): string | null {
     const filename = `${timestamp}_${safeName}_解析报告.md`
     const filePath = path.join(REPORTS_DIR, filename)
     fs.writeFileSync(filePath, content, 'utf-8')
-    return filename
+    return filePath
   } catch {
     return null
   }
@@ -160,12 +160,13 @@ function parseReport(fullReport: string) {
   let part1 = ''
   let part2 = ''
 
-  const part1Match = fullReport.match(/###?\s*\*?\*?第一部分[：:]?\s*文献核心内容解读\*?\*?\s*\n([\s\S]*?)(?=###?\s*\*?\*?第二部分)/i)
+  // Ultra-flexible regex to catch any variation of "第一部分..." as a header
+  const part1Match = fullReport.match(/(?:^|\n)(?:#{1,4}\s*)?(?:\*\*?)?第一部分[^\n]*\n([\s\S]*?)(?=(?:^|\n)(?:#{1,4}\s*)?(?:\*\*?)?第二部分[^\n]*\n)/i)
   if (part1Match) {
     part1 = part1Match[1].trim()
   }
 
-  const part2Match = fullReport.match(/###?\s*\*?\*?第二部分[：:]?\s*投资策略深度解析\*?\*?\s*\n([\s\S]*?)(?=###?\s*\*?\*?第三部分|$)/i)
+  const part2Match = fullReport.match(/(?:^|\n)(?:#{1,4}\s*)?(?:\*\*?)?第二部分[^\n]*\n([\s\S]*?)(?=(?:^|\n)(?:#{1,4}\s*)?(?:\*\*?)?第三部分[^\n]*\n|$)/i)
   if (part2Match) {
     part2 = part2Match[1].trim()
   }
@@ -218,7 +219,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { url, text, filename, fileBase64, mimeType } = body
+    const { url, text, filename, fileBase64, mimeType, model: customModel } = body
 
     let content = ''
     let sourceTitle = '未命名'
@@ -275,7 +276,10 @@ export async function POST(request: NextRequest) {
     let usedModel = ''
     const errors: string[] = []
 
-    for (const model of MODELS) {
+    // Determine which models to try
+    const modelsToTry = customModel ? [customModel, ...MODELS.filter(m => m !== customModel)] : MODELS
+
+    for (const model of modelsToTry) {
       try {
         console.log(`[Gemini] Trying model: ${model}`)
         const response = await retryWithBackoff(async () => {

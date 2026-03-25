@@ -33,6 +33,7 @@ export default function PaperToFactorPage() {
   const [uploadedFileName, setUploadedFileName] = useState('')
   const [fileBase64, setFileBase64] = useState('')
   const [mimeType, setMimeType] = useState('')
+  const [selectedModel, setSelectedModel] = useState('')
 
   async function handleConvert() {
     if (!paperUrl && !paperText && !uploadedFileName) {
@@ -51,6 +52,7 @@ export default function PaperToFactorPage() {
         filename: uploadedFileName || undefined,
         fileBase64: inputMode === 'file' ? fileBase64 : undefined,
         mimeType: inputMode === 'file' ? mimeType : undefined,
+        model: selectedModel || undefined,
       })
 
       if (data.success) {
@@ -188,6 +190,18 @@ export default function PaperToFactorPage() {
               </div>
             )}
 
+            {/* Model Selection */}
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">使用模型名称 (留空使用默认)</label>
+              <input
+                type="text"
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value)}
+                placeholder="例如: gemini-2.5-pro, gemini-2.5-flash..."
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+              />
+            </div>
+
             <button
               onClick={handleConvert}
               disabled={loading}
@@ -247,9 +261,13 @@ export default function PaperToFactorPage() {
               {/* Header */}
               <div className="bg-gradient-to-r from-emerald-600 to-emerald-500 p-5 text-white">
                 <h2 className="text-lg font-bold mb-1">{report.title}</h2>
-                <div className="flex items-center gap-4 text-sm text-emerald-100">
+                <div className="flex flex-col gap-1 text-sm text-emerald-100 mt-2">
                   {report.usedModel && <span>模型: {report.usedModel}</span>}
-                  {report.savedFilename && <span>已保存 ✓</span>}
+                  {report.savedFilename && (
+                    <span className="text-emerald-50 text-xs mt-1 bg-black/10 rounded px-2 py-1 leading-[1.4] break-all">
+                      💾 已自动保存至: {report.savedFilename}
+                    </span>
+                  )}
                 </div>
               </div>
 
