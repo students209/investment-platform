@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
+import ReactMarkdown from 'react-markdown'
 import { getReport, getIndustryReports } from '@/lib/hugo'
 
 export async function generateStaticParams() {
@@ -55,27 +56,7 @@ export default async function IndustryReportDetail({
         </header>
 
         <div className="prose prose-lg max-w-none">
-          {report.body.split('\n').map((line, i) => {
-            if (line.startsWith('# ')) {
-              return <h1 key={i} className="text-2xl font-bold mt-8 mb-4">{line.slice(2)}</h1>
-            }
-            if (line.startsWith('## ')) {
-              return <h2 key={i} className="text-xl font-bold mt-6 mb-3">{line.slice(3)}</h2>
-            }
-            if (line.startsWith('### ')) {
-              return <h3 key={i} className="text-lg font-semibold mt-4 mb-2">{line.slice(4)}</h3>
-            }
-            if (line.startsWith('- ')) {
-              return <li key={i} className="ml-4">{line.slice(2)}</li>
-            }
-            if (line.startsWith('| ')) {
-              return <p key={i} className="font-mono text-sm bg-gray-50 px-2 py-1 my-1">{line}</p>
-            }
-            if (line.trim() === '') {
-              return <br key={i} />
-            }
-            return <p key={i} className="my-2">{line}</p>
-          })}
+          <ReactMarkdown>{report.body}</ReactMarkdown>
         </div>
       </article>
 
