@@ -1,0 +1,15 @@
+{
+  "$schema": "https://railway.app/schema.json",
+  "build": {
+    "builder": "NIXPACKS",
+    "nixpacksPkgs": "# python311 with pip\npkgs.python311"
+  },
+  "deploy": {
+    "numReplicas": 1,
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 10,
+    "healthcheckPath": "/api/health",
+    "port": 8000,
+    "startCommand": "pip install -r requirements.txt && uvicorn main:app --host 0.0.0.0 --port 8000"
+  }
+}
