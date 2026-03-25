@@ -7,6 +7,7 @@
 import fs from 'fs';
 import path from 'path';
 import matter from 'gray-matter';
+import crypto from 'crypto';
 
 // 判断运行环境
 const IS_VERCEL = process.env.VERCEL === '1';
@@ -20,25 +21,71 @@ function getHugoPath() {
   if (IS_VERCEL) {
     return VERCEL_HUGO_PATH;
   }
-  // 本地开发：优先用软链接，不存在则用 Hugo 源目录
   if (fs.existsSync(LOCAL_HUGO_PATH)) {
     return LOCAL_HUGO_PATH;
   }
-  // 备选：直接用 Hugo 源目录
   return '/Users/alpha/Documents/learn/openclaw_project/teamwork_html/docs/insights';
 }
 
-// 从文件名提取日期，如 "2026-03-14-食品饮料.md" -> "2026-03-14"
-function extractDateFromFilename(filename: string): string {
-  // 匹配 YYYY-MM-DD 格式
-  const match = filename.match(/(\d{4}-\d{2}-\d{2})/);
-  return match ? match[1] : '';
+// 生成 URL 安全的 slug
+function toUrlSlug(filename: string): string {
+  // 去掉 .md 扩展名
+  const name = filename.replace('.md', '');
+  // 如果全是 ASCII，直接返回
+  if (/^[\x00-\x7F]+$/.test(name)) {
+    return name;
+  }
+  // 中文或混合内容：用日期作为前缀 + 标题的拼音首字母简化
+  const dateMatch = name.match(/^(\d{4}-\d{2}-\d{2})/);
+  const date = dateMatch ? dateMatch[1] : '';
+  // 提取中文部分作为唯一标识
+  const chinese = name.replace(/^\d{4}-\d{2}-\d{2}-/, '');
+  // 用 MD5 哈希生成短标识
+  const hash = crypto.createHash('md5').update(chinese).digest('hex').slice(0, 6);
+  // 格式: 日期-哈希，如 2026-03-24-a1b2c3
+  return date ? `${date}-${hash}` : hash;
 }
 
-// 从文件名提取标题，如 "2026-03-14-食品饮料.md" -> "食品饮料"
-function extractTitleFromFilename(filename: string): string {
-  // 去掉日期前缀
-  return filename.replace(/^\d{4}-\d{2}-\d{2}-/, '').replace('.md', '');
+// 从 URL slug 还原文件名
+function fromUrlSlug(urlSlug: string, category: string): string | null {
+  const HUGO_PATH = getHugoPath();
+  let dir: string;
+  
+  switch (category) {
+    case 'industry':
+      dir = IS_VERCEL 
+        ? path.join(HUGO_PATH, 'industries')
+        : path.join(HUGO_PATH, 'research/industries');
+      break;
+    case 'company':
+      dir = IS_VERCEL 
+        ? path.join(HUGO_PATH, 'companies')
+        : path.join(HUGO_PATH, 'research/companies');
+      break;
+    case 'daily':
+      dir = path.join(HUGO_PATH, 'daily-report');
+      break;
+    default:
+      return null;
+  }
+  
+  // 遍历目录找匹配的文件
+  if (!fs.existsSync(dir)) return null;
+  
+  const files = fs.readdirSync(dir).filter(f => f.endsWith('.md'));
+  
+  for (const file of files) {
+    if (toUrlSlug(file) === urlSlug) {
+      return file;
+    }
+  }
+  
+  // 如果完全匹配（ASCII 名称），直接返回
+  if (files.includes(urlSlug + '.md')) {
+    return urlSlug + '.md';
+  }
+  
+  return null;
 }
 
 export interface ReportMeta {
@@ -48,11 +95,23 @@ export interface ReportMeta {
   summary?: string;
   author?: string;
   slug: string;
+  filename: string;
 }
 
 export interface Report extends ReportMeta {
   body: string;
   category?: string;
+}
+
+// 从文件名提取标题
+function extractTitleFromFilename(filename: string): string {
+  return filename.replace(/^\d{4}-\d{2}-\d{2}-/, '').replace('.md', '');
+}
+
+// 从文件名提取日期
+function extractDateFromFilename(filename: string): string {
+  const match = filename.match(/(\d{4}-\d{2}-\d{2})/);
+  return match ? match[1] : '';
 }
 
 // 获取行业研究报告
@@ -75,9 +134,7 @@ export async function getIndustryReports(): Promise<Report[]> {
       const content = fs.readFileSync(filePath, 'utf-8');
       const { data, content: body } = matter(content);
       
-      // 优先用 frontmatter 的 title，其次从文件名提取
       const title = data.title || extractTitleFromFilename(file);
-      // 优先用 frontmatter 的 date，其次从文件名提取
       const date = data.date || extractDateFromFilename(file);
       
       return {
@@ -86,13 +143,13 @@ export async function getIndustryReports(): Promise<Report[]> {
         tags: data.tags || [],
         summary: data.summary || '',
         author: data.author || '',
-        slug: file.replace('.md', ''),
+        slug: toUrlSlug(file),
+        filename: file,
         body,
         category: 'industry'
       };
     });
     
-    // 按日期倒序排列
     return reports.sort((a, b) => {
       if (!a.date) return 1;
       if (!b.date) return -1;
@@ -133,7 +190,8 @@ export async function getCompanyReports(): Promise<Report[]> {
         tags: data.tags || [],
         summary: data.summary || '',
         author: data.author || '',
-        slug: file.replace('.md', ''),
+        slug: toUrlSlug(file),
+        filename: file,
         body,
         category: 'company'
       };
@@ -168,7 +226,6 @@ export async function getDailyReports(): Promise<Report[]> {
       const content = fs.readFileSync(filePath, 'utf-8');
       const { data, content: body } = matter(content);
       
-      // 每日报告的标题从文件内容第一行提取
       const titleMatch = body.match(/^#\s+(.+)/);
       const title = data.title || (titleMatch ? titleMatch[1] : file.replace('.md', ''));
       const date = data.date || extractDateFromFilename(file);
@@ -179,7 +236,8 @@ export async function getDailyReports(): Promise<Report[]> {
         tags: data.tags || [],
         summary: data.summary || '',
         author: data.author || '',
-        slug: file.replace('.md', ''),
+        slug: toUrlSlug(file),
+        filename: file,
         body,
         category: 'daily'
       };
@@ -196,22 +254,17 @@ export async function getDailyReports(): Promise<Report[]> {
   }
 }
 
-// 获取所有报告
-export async function getAllReports(): Promise<Report[]> {
-  const [industries, companies, daily] = await Promise.all([
-    getIndustryReports(),
-    getCompanyReports(),
-    getDailyReports()
-  ]);
-  
-  return [...daily, ...industries, ...companies];
-}
-
 // 获取单个报告
 export async function getReport(category: string, slug: string): Promise<Report | null> {
   const HUGO_PATH = getHugoPath();
-  let dir: string;
+  const originalFilename = fromUrlSlug(slug, category);
   
+  if (!originalFilename) {
+    console.log('[Hugo] 未找到文件:', slug, category);
+    return null;
+  }
+  
+  let dir: string;
   switch (category) {
     case 'industry':
       dir = IS_VERCEL 
@@ -231,18 +284,16 @@ export async function getReport(category: string, slug: string): Promise<Report 
   }
   
   try {
-    const filePath = path.join(dir, `${slug}.md`);
+    const filePath = path.join(dir, originalFilename);
     if (!fs.existsSync(filePath)) {
-      console.log('[Hugo] 文件不存在:', filePath);
       return null;
     }
     
     const content = fs.readFileSync(filePath, 'utf-8');
     const { data, content: body } = matter(content);
     
-    const titleMatch = body.match(/^#\s+(.+)/);
-    const title = data.title || (titleMatch ? titleMatch[1] : slug);
-    const date = data.date || extractDateFromFilename(slug);
+    const title = data.title || extractTitleFromFilename(originalFilename);
+    const date = data.date || extractDateFromFilename(originalFilename);
     
     return {
       title,
@@ -251,6 +302,7 @@ export async function getReport(category: string, slug: string): Promise<Report 
       summary: data.summary || '',
       author: data.author || '',
       slug,
+      filename: originalFilename,
       body,
       category
     };
@@ -258,4 +310,15 @@ export async function getReport(category: string, slug: string): Promise<Report 
     console.error('[Hugo] 读取报告失败:', error);
     return null;
   }
+}
+
+// 获取所有报告
+export async function getAllReports(): Promise<Report[]> {
+  const [industries, companies, daily] = await Promise.all([
+    getIndustryReports(),
+    getCompanyReports(),
+    getDailyReports()
+  ]);
+  
+  return [...daily, ...industries, ...companies];
 }
