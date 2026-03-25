@@ -2,10 +2,10 @@
  * API 客户端 - 调用 FastAPI 后端
  * 
  * 本地开发: http://localhost:8000
- * 生产环境: 通过 Cloudflare Tunnel 或 ngrok 暴露到公网
+ * 生产环境: https://c438b1faeb531385-217-116-174-241.serveousercontent.com
  */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://c438b1faeb531385-217-116-174-241.serveousercontent.com';
 
 async function fetchAPI(endpoint: string) {
   try {
