@@ -93,9 +93,9 @@ def alpha_trend_001(df, params=None):
 
 // Models to try in order (most capable first)
 const MODELS = [
-  'gemini-2.0-flash-lite',
   'gemini-2.5-flash',
   'gemini-2.5-pro',
+  'gemini-2.0-flash-lite',
   'gemini-2.0-flash',
   'gemini-2.0-pro',
 ]
@@ -287,7 +287,7 @@ export async function POST(request: NextRequest) {
             model,
             contents: promptContents,
             config: {
-              maxOutputTokens: 8192,
+              maxOutputTokens: 65536,
               temperature: 0.3,
             },
           })
