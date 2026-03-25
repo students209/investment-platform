@@ -93,7 +93,8 @@ export async function convertPaper(data: {
   mimeType?: string;
   model?: string;
 }) {
-  const res = await fetch('/api/paper/convert', {
+  const baseUrl = process.env.NEXT_PUBLIC_API_URL || ''
+  const res = await fetch(`${baseUrl}/api/paper/convert`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
