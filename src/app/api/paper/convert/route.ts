@@ -100,11 +100,9 @@ const MODELS = [
   'gemini-2.0-pro',
 ]
 
-// Local Paths Setup
-const SKILL_DIR = '/Users/alpha/.openclaw/workspace-quant_engineer/skills/文章转因子'
-const REPORTS_DIR = path.join(SKILL_DIR, 'reports')
-const FACTORS_CUSTOM_DIR = path.join(SKILL_DIR, 'factors', 'custom')
-const FACTORS_INDEX_PATH = path.join(SKILL_DIR, 'factors_index.json')
+// Reports directory
+const REPORTS_DIR = '/Users/alpha/.openclaw/workspace-quant_engineer/skills/文章转因子/reports'
+
 function ensureReportsDir() {
   try {
     if (!fs.existsSync(REPORTS_DIR)) {
@@ -129,109 +127,6 @@ function saveReport(title: string, content: string): string | null {
     return null
   }
 }
-
-// Extract Python source code blocks and save as .py files to custom/ folder
-function extractAndSaveFactors(fullReport: string, sourceTitle: string) {
-  try {
-    if (!fs.existsSync(FACTORS_CUSTOM_DIR)) {
-      fs.mkdirSync(FACTORS_CUSTOM_DIR, { recursive: true })
-    }
-    
-    // Ensure __init__.py exists
-    const initPath = path.join(FACTORS_CUSTOM_DIR, '__init__.py')
-    if (!fs.existsSync(initPath)) {
-      fs.writeFileSync(initPath, '# Auto-generated init\\n', 'utf-8')
-    }
-
-    const codeBlocks = [...fullReport.matchAll(/```(?:python)?\\s*\\n([\\s\\S]*?)\\n```/gi)]
-    let indexData = { factors: [] as any[], total_count: 0 }
-    
-    if (fs.existsSync(FACTORS_INDEX_PATH)) {
-      try {
-        indexData = JSON.parse(fs.readFileSync(FACTORS_INDEX_PATH, 'utf-8'))
-      } catch (e) {
-        console.warn('[Gemini] Could not parse factors_index.json, starting fresh.')
-      }
-    }
-
-    let factorsAdded = 0
-    for (const block of codeBlocks) {
-      const code = block[1]
-      // Split by 'def alpha_' to handle multiple functions in one block
-      const funcs = code.split(/^(?=def\\s+alpha_)/m)
-      
-      for (let funcCode of funcs) {
-        funcCode = funcCode.trim()
-        if (!funcCode.startsWith('def alpha_')) continue
-        
-        const nameMatch = funcCode.match(/^def\\s+(alpha_[a-zA-Z0-9_]+)/)
-        if (nameMatch) {
-          const name = nameMatch[1]
-          
-          // Heuristic to extract required data fields
-          const fields: string[] = []
-          for (const field of ['open', 'high', 'low', 'close', 'volume', 'amount', 'vwap', 'turn', 'returns']) {
-            if (funcCode.includes(`'${field}'`) || funcCode.includes(`"${field}"`)) {
-              fields.push(field)
-            }
-          }
-
-          // Generate Python file content
-          const pyFilePath = path.join(FACTORS_CUSTOM_DIR, `${name}.py`)
-          const pyContent = `# -*- coding: utf-8 -*-
-"""
-自定义因子：${name}
-来源：${sourceTitle}
-"""
-import sys
-import os
-import numpy as np
-import pandas as pd
-from datetime import datetime
-
-try:
-    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-    from core.core_functions import *
-except Exception:
-    pass
-
-${funcCode}
-`
-          fs.writeFileSync(pyFilePath, pyContent, 'utf-8')
-
-          // Update factors_index.json
-          const dateStr = new Date().toISOString()
-          const existingIndex = indexData.factors.findIndex((f: any) => f.name === name)
-          const factorRecord = {
-            name,
-            category: 'custom',
-            logic_summary: `Generated from ${sourceTitle}`,
-            formula_code: funcCode,
-            data_fields: fields,
-            source: sourceTitle,
-            generated_at: dateStr,
-          }
-          
-          if (existingIndex >= 0) {
-            indexData.factors[existingIndex] = factorRecord
-          } else {
-            indexData.factors.push(factorRecord)
-          }
-          factorsAdded++
-        }
-      }
-    }
-
-    if (factorsAdded > 0) {
-      indexData.total_count = indexData.factors.length
-      fs.writeFileSync(FACTORS_INDEX_PATH, JSON.stringify(indexData, null, 2), 'utf-8')
-      console.log(`[Gemini] Successfully extracted and saved ${factorsAdded} factors to local library.`)
-    }
-  } catch (e) {
-    console.error('[Gemini] Failed to save factors:', e)
-  }
-}
-
 
 // Retry helper with exponential backoff
 async function retryWithBackoff<T>(
@@ -440,9 +335,6 @@ export async function POST(request: NextRequest) {
 
     // Save report locally
     const savedFilename = saveReport(sourceTitle, fullReport)
-
-    // Extract and save Python factors to factors/custom/ and update index JSON
-    extractAndSaveFactors(fullReport, sourceTitle)
 
     return NextResponse.json({
       success: true,
