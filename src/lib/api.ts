@@ -1,13 +1,21 @@
 /**
  * API 客户端 - 调用 FastAPI 后端
+ * 
+ * 本地开发: http://localhost:8000
+ * 生产环境: 通过 Cloudflare Tunnel 或 ngrok 暴露到公网
  */
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 async function fetchAPI(endpoint: string) {
-  const res = await fetch(`${API_BASE}${endpoint}`);
-  if (!res.ok) throw new Error(`API Error: ${res.status}`);
-  return res.json();
+  try {
+    const res = await fetch(`${API_BASE}${endpoint}`);
+    if (!res.ok) throw new Error(`API Error: ${res.status}`);
+    return res.json();
+  } catch (error) {
+    console.error('API request failed:', error);
+    throw error;
+  }
 }
 
 // ============ 行情 API ============
@@ -68,6 +76,21 @@ export async function backtestFactor(data: {
   end_date: string;
 }) {
   const res = await fetch(`${API_BASE}/api/factors/backtest`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+// ============ 论文转因子 API ============
+
+export async function convertPaper(data: {
+  url?: string;
+  text?: string;
+  filename?: string;
+}) {
+  const res = await fetch(`${API_BASE}/api/paper/convert`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),

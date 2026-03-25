@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef } from 'react'
+import { convertPaper } from '@/lib/api'
 
 interface Factor {
   name: string
@@ -37,95 +38,19 @@ export default function PaperToFactorPage() {
     setReport(null)
 
     try {
-      const res = await fetch('http://localhost:8000/api/paper/convert', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          url: paperUrl,
-          text: paperText,
-          filename: uploadedFileName
-        }),
+      const data = await convertPaper({
+        url: paperUrl || undefined,
+        text: paperText || undefined,
+        filename: uploadedFileName || undefined,
       })
-
-      const data = await res.json()
 
       if (data.success) {
         setReport(data.data)
       } else {
-        setError(data.error || '解析失败')
+        setError(data.error || '解析失败，请确保后端服务已启动')
       }
     } catch (err) {
-      // 后端暂未实现，显示模拟数据用于预览
-      setReport({
-        title: 'Uhl MA Crossover System 解析报告',
-        part1: `### 1. 标题
-* 技术分析2——修正均线CMA配合快速自适应均线CTS构成完整的均线交叉交易系统（Uhl MA Crossover System）
-
-### 2. 摘要
-* 本文提出了一种基于奥地利萨尔茨堡大学教授 Andreas Uhl 提出的修正均线（CMA）和快速自适应均线（CTS）构成的均线交叉交易系统（Uhl MA Crossover System）。该系统旨在解决传统均线在震荡行情中产生大量无效假信号、以及在趋势行情中反应过慢或过激进的问题。
-
-### 3. 核心观点
-* **均线不应单纯追求"快"或"慢"，而应追求"智能跟随"**：当价格在噪音中波动时，均线应采取"忽略"态度；当真实趋势出现时，才进行快速调整。
-* **CMA（修正均线）作为慢线，利用动态平滑系数过滤噪音**：CMA 判断当前价格的简单移动平均（SMA）与上一期CMA的偏离程度（误差的二次幂），如果误差小于设定的滚动方差（阈值），则平滑系数趋近于0。
-* **CTS（快速自适应均线）作为快线，更贴近当前价格**：CTS 直接比较当前收盘价与上一根CTS的差值平方，使其对趋势反应更加敏捷。
-
-### 4. 总结
-* Uhl MA 交叉系统提供了一种严谨克制的自适应均线解决方案。它从数学和数字信号滤波器的理念出发，利用价格方差作为噪音鉴别阈值，极其优雅地解决了传统技术分析中长期存在的指标钝化与过度敏感的矛盾。`,
-        part2: `**策略：Uhl 修正型均线交叉系统 (Uhl MA Crossover System)**
-
-### 1. 策略描述
-
-**投资宇宙：**
-* 广泛适用于具备连续历史报价的交易品种，尤其是趋势与震荡交替的金融市场（如A股、期货等）。
-
-**核心思想：**
-* 通过对比当前市场的方差（阈值）与价格序列自身的偏离二次平方（误差），动态计算均线平滑权重 \`k\`。利用这种变平滑系数生成一条慢线 CMA 和一条快线 CTS，构成一个自适应均线交叉系统来捕捉趋势并过滤震荡。
-
-**详细规则：**
-
-| 规则类型 | 描述 |
-| :--- | :--- |
-| **买入规则** | 快线 CTS 上穿（大于）慢线 CMA，表明趋势转为多头偏向 |
-| **卖出规则** | 快线 CTS 下穿（小于）慢线 CMA，表明趋势转为空头偏向 |
-| **调仓频率** | 按日频实时或随K线走完判断交叉信号进行调仓操作 |
-
-### 2. 回测逻辑与关键指标
-
-**所需数据：**
-* 交易标的的历史量价数据，主要需要收盘价（Close）。基础日线行情数据即可运作。
-
-**关键参数：**
-
-| 参数名称 | 符号 | 描述 | 默认值 |
-| :--- | :--- | :--- | :--- |
-| 观察周期 | \`length\` | 控制长期的观察窗口基准配置 | 100 |
-| 过滤乘数 | \`mult\` | 噪音过滤强度调节器 | 1.0 |`,
-        factors: [
-          {
-            name: 'alpha_uhl_crossover',
-            description: '基于Uhl MA System (CMA/CTS) 交叉的动量方向因子',
-            params: [
-              { name: 'length', default: 100, description: '观察周期' },
-              { name: 'mult', default: 1.0, description: '过滤乘数' }
-            ]
-          },
-          {
-            name: 'cma_signal',
-            description: 'CMA慢线信号指标',
-            params: [
-              { name: 'length', default: 100, description: '均线周期' }
-            ]
-          },
-          {
-            name: 'cts_signal',
-            description: 'CTS快线信号指标',
-            params: [
-              { name: 'length', default: 100, description: '均线周期' }
-            ]
-          }
-        ],
-        rawContent: ''
-      })
+      setError('无法连接到后端服务，请确保本地后端已启动')
     }
     setLoading(false)
   }
@@ -161,9 +86,16 @@ export default function PaperToFactorPage() {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <h1 className="text-3xl font-bold text-gray-900 mb-2">📄 论文转因子</h1>
-      <p className="text-gray-600 mb-8">
+      <p className="text-gray-600 mb-4">
         输入学术论文链接、粘贴内容或上传文档，AI 将自动提取核心逻辑并转化为量化因子
       </p>
+
+      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+        <p className="text-sm text-yellow-800">
+          <strong>⚠️ 注意：</strong>使用此功能需要本地后端运行。请确保已启动本地后端服务：
+          <code className="bg-yellow-100 px-1 mx-1">cd ~/investment-platform/backend && source venv/bin/activate && uvicorn main:app --port 8000</code>
+        </p>
+      </div>
 
       <div className="grid lg:grid-cols-2 gap-8">
         {/* 左侧：输入区域 */}
