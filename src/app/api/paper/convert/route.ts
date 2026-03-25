@@ -93,9 +93,11 @@ def alpha_trend_001(df, params=None):
 
 // Models to try in order (most capable first)
 const MODELS = [
+  'gemini-2.0-flash-lite',
   'gemini-2.5-flash',
   'gemini-2.5-pro',
   'gemini-2.0-flash',
+  'gemini-2.0-pro',
 ]
 
 // Reports directory
