@@ -19,31 +19,28 @@ export default async function NewsPage() {
           </p>
         </div>
       ) : (
-        <div className="space-y-6">
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           {reports.map((report) => (
-            <article key={report.slug} className="bg-white rounded-lg shadow p-6">
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center space-x-3 mb-2">
-                    <span className="text-sm text-gray-500">{report.date}</span>
-                    {report.tags?.map((tag: string, i: number) => (
-                      <span key={i} className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded">
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                  <h2 className="text-xl font-semibold text-gray-900 mb-3">
-                    {report.title}
-                  </h2>
-                  {report.summary && (
-                    <p className="text-gray-600 mb-4">{report.summary}</p>
-                  )}
-                  <div className="prose prose-sm max-w-none text-gray-700">
-                    {report.body.slice(0, 500)}
-                    {report.body.length > 500 && '...'}
-                  </div>
-                </div>
+            <article 
+              key={report.slug} 
+              className="bg-white rounded-lg shadow hover:shadow-lg transition-shadow p-6 flex flex-col"
+            >
+              <div className="flex items-start justify-between mb-3">
+                <span className="text-sm text-gray-500">{report.date}</span>
+                {report.tags?.[0] && (
+                  <span className="px-2 py-1 bg-emerald-100 text-emerald-700 text-xs rounded">
+                    {report.tags[0]}
+                  </span>
+                )}
               </div>
+              <h2 className="text-lg font-semibold text-gray-900 mb-3 line-clamp-2">
+                {report.title}
+              </h2>
+              {report.summary && (
+                <p className="text-gray-600 text-sm line-clamp-3 flex-1">
+                  {report.summary}
+                </p>
+              )}
               <div className="mt-4 pt-4 border-t">
                 <Link 
                   href={`/news/${report.slug}`}
