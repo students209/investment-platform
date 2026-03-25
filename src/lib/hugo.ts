@@ -28,6 +28,19 @@ function getHugoPath() {
   return '/Users/alpha/Documents/learn/openclaw_project/teamwork_html/docs/insights';
 }
 
+// 从文件名提取日期，如 "2026-03-14-食品饮料.md" -> "2026-03-14"
+function extractDateFromFilename(filename: string): string {
+  // 匹配 YYYY-MM-DD 格式
+  const match = filename.match(/(\d{4}-\d{2}-\d{2})/);
+  return match ? match[1] : '';
+}
+
+// 从文件名提取标题，如 "2026-03-14-食品饮料.md" -> "食品饮料"
+function extractTitleFromFilename(filename: string): string {
+  // 去掉日期前缀
+  return filename.replace(/^\d{4}-\d{2}-\d{2}-/, '').replace('.md', '');
+}
+
 export interface ReportMeta {
   title: string;
   date: string;
@@ -46,8 +59,6 @@ export interface Report extends ReportMeta {
 export async function getIndustryReports(): Promise<Report[]> {
   const HUGO_PATH = getHugoPath();
   try {
-    // Vercel: public/hugo-data/industries
-    // 本地: insights/research/industries
     const dir = IS_VERCEL 
       ? path.join(HUGO_PATH, 'industries')
       : path.join(HUGO_PATH, 'research/industries');
@@ -58,24 +69,35 @@ export async function getIndustryReports(): Promise<Report[]> {
     }
     
     const files = fs.readdirSync(dir).filter(f => f.endsWith('.md'));
-    console.log('[Hugo] 找到行业报告:', files.length, '个, 路径:', dir);
     
-    return files
-      .map(file => {
-        const content = fs.readFileSync(path.join(dir, file), 'utf-8');
-        const { data, content: body } = matter(content);
-        return {
-          title: data.title || file.replace('.md', ''),
-          date: data.date || '',
-          tags: data.tags || [],
-          summary: data.summary || '',
-          author: data.author || '',
-          slug: file.replace('.md', ''),
-          body,
-          category: 'industry'
-        };
-      })
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    const reports = files.map(file => {
+      const filePath = path.join(dir, file);
+      const content = fs.readFileSync(filePath, 'utf-8');
+      const { data, content: body } = matter(content);
+      
+      // 优先用 frontmatter 的 title，其次从文件名提取
+      const title = data.title || extractTitleFromFilename(file);
+      // 优先用 frontmatter 的 date，其次从文件名提取
+      const date = data.date || extractDateFromFilename(file);
+      
+      return {
+        title,
+        date,
+        tags: data.tags || [],
+        summary: data.summary || '',
+        author: data.author || '',
+        slug: file.replace('.md', ''),
+        body,
+        category: 'industry'
+      };
+    });
+    
+    // 按日期倒序排列
+    return reports.sort((a, b) => {
+      if (!a.date) return 1;
+      if (!b.date) return -1;
+      return new Date(b.date).getTime() - new Date(a.date).getTime();
+    });
   } catch (error) {
     console.error('[Hugo] 读取行业报告失败:', error);
     return [];
@@ -86,8 +108,6 @@ export async function getIndustryReports(): Promise<Report[]> {
 export async function getCompanyReports(): Promise<Report[]> {
   const HUGO_PATH = getHugoPath();
   try {
-    // Vercel: public/hugo-data/companies
-    // 本地: insights/research/companies
     const dir = IS_VERCEL 
       ? path.join(HUGO_PATH, 'companies')
       : path.join(HUGO_PATH, 'research/companies');
@@ -98,24 +118,32 @@ export async function getCompanyReports(): Promise<Report[]> {
     }
     
     const files = fs.readdirSync(dir).filter(f => f.endsWith('.md'));
-    console.log('[Hugo] 找到企业报告:', files.length, '个, 路径:', dir);
     
-    return files
-      .map(file => {
-        const content = fs.readFileSync(path.join(dir, file), 'utf-8');
-        const { data, content: body } = matter(content);
-        return {
-          title: data.title || file.replace('.md', ''),
-          date: data.date || '',
-          tags: data.tags || [],
-          summary: data.summary || '',
-          author: data.author || '',
-          slug: file.replace('.md', ''),
-          body,
-          category: 'company'
-        };
-      })
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    const reports = files.map(file => {
+      const filePath = path.join(dir, file);
+      const content = fs.readFileSync(filePath, 'utf-8');
+      const { data, content: body } = matter(content);
+      
+      const title = data.title || extractTitleFromFilename(file);
+      const date = data.date || extractDateFromFilename(file);
+      
+      return {
+        title,
+        date,
+        tags: data.tags || [],
+        summary: data.summary || '',
+        author: data.author || '',
+        slug: file.replace('.md', ''),
+        body,
+        category: 'company'
+      };
+    });
+    
+    return reports.sort((a, b) => {
+      if (!a.date) return 1;
+      if (!b.date) return -1;
+      return new Date(b.date).getTime() - new Date(a.date).getTime();
+    });
   } catch (error) {
     console.error('[Hugo] 读取企业报告失败:', error);
     return [];
@@ -126,8 +154,6 @@ export async function getCompanyReports(): Promise<Report[]> {
 export async function getDailyReports(): Promise<Report[]> {
   const HUGO_PATH = getHugoPath();
   try {
-    // Vercel: public/hugo-data/daily-report
-    // 本地: insights/daily-report
     const dir = path.join(HUGO_PATH, 'daily-report');
     
     if (!fs.existsSync(dir)) {
@@ -136,24 +162,34 @@ export async function getDailyReports(): Promise<Report[]> {
     }
     
     const files = fs.readdirSync(dir).filter(f => f.endsWith('.md'));
-    console.log('[Hugo] 找到每日报告:', files.length, '个, 路径:', dir);
     
-    return files
-      .map(file => {
-        const content = fs.readFileSync(path.join(dir, file), 'utf-8');
-        const { data, content: body } = matter(content);
-        return {
-          title: data.title || file.replace('.md', ''),
-          date: data.date || '',
-          tags: data.tags || [],
-          summary: data.summary || '',
-          author: data.author || '',
-          slug: file.replace('.md', ''),
-          body,
-          category: 'daily'
-        };
-      })
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    const reports = files.map(file => {
+      const filePath = path.join(dir, file);
+      const content = fs.readFileSync(filePath, 'utf-8');
+      const { data, content: body } = matter(content);
+      
+      // 每日报告的标题从文件内容第一行提取
+      const titleMatch = body.match(/^#\s+(.+)/);
+      const title = data.title || (titleMatch ? titleMatch[1] : file.replace('.md', ''));
+      const date = data.date || extractDateFromFilename(file);
+      
+      return {
+        title,
+        date,
+        tags: data.tags || [],
+        summary: data.summary || '',
+        author: data.author || '',
+        slug: file.replace('.md', ''),
+        body,
+        category: 'daily'
+      };
+    });
+    
+    return reports.sort((a, b) => {
+      if (!a.date) return 1;
+      if (!b.date) return -1;
+      return new Date(b.date).getTime() - new Date(a.date).getTime();
+    });
   } catch (error) {
     console.error('[Hugo] 读取每日报告失败:', error);
     return [];
@@ -204,9 +240,13 @@ export async function getReport(category: string, slug: string): Promise<Report 
     const content = fs.readFileSync(filePath, 'utf-8');
     const { data, content: body } = matter(content);
     
+    const titleMatch = body.match(/^#\s+(.+)/);
+    const title = data.title || (titleMatch ? titleMatch[1] : slug);
+    const date = data.date || extractDateFromFilename(slug);
+    
     return {
-      title: data.title || slug,
-      date: data.date || '',
+      title,
+      date,
       tags: data.tags || [],
       summary: data.summary || '',
       author: data.author || '',
