@@ -36,7 +36,7 @@ export default async function HomePage() {
     return num?.toFixed(decimals) || '-'
   }
 
-  const formatChange = (change: number, pct: number) => {
+  const formatChange = (change: number) => {
     const isPositive = change >= 0
     return {
       class: isPositive ? 'text-red-500' : 'text-green-500',
@@ -51,7 +51,7 @@ export default async function HomePage() {
         <h2 className="text-2xl font-bold text-gray-900 mb-4">大盘指数</h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {marketData?.data?.map((index: any) => {
-            const { class: colorClass, sign } = formatChange(index['涨跌幅'], index['涨跌幅'])
+            const { class: colorClass, sign } = formatChange(index['涨跌幅'])
             return (
               <div key={index['代码']} className="bg-white rounded-lg shadow p-4">
                 <div className="text-sm text-gray-500">{index['名称']}</div>
@@ -74,25 +74,56 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* 快速入口 */}
+      {/* 核心功能 */}
+      <section className="mb-8">
+        <h2 className="text-2xl font-bold text-gray-900 mb-4">核心功能</h2>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <Link href="/paper-to-factor" className="bg-gradient-to-br from-emerald-500 to-emerald-600 text-white rounded-lg shadow p-6 hover:from-emerald-600 hover:to-emerald-700 transition-all">
+            <div className="text-2xl mb-2">📄</div>
+            <div className="text-lg font-bold">论文转因子</div>
+            <div className="text-sm opacity-80 mt-1">学术论文 → 量化因子</div>
+          </Link>
+          <Link href="/factors" className="bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-lg shadow p-6 hover:from-blue-600 hover:to-blue-700 transition-all">
+            <div className="text-2xl mb-2">🔬</div>
+            <div className="text-lg font-bold">因子实验室</div>
+            <div className="text-sm opacity-80 mt-1">因子计算与回测</div>
+          </Link>
+          <Link href="/factor-store" className="bg-gradient-to-br from-purple-500 to-purple-600 text-white rounded-lg shadow p-6 hover:from-purple-600 hover:to-purple-700 transition-all">
+            <div className="text-2xl mb-2">🏪</div>
+            <div className="text-lg font-bold">因子超市</div>
+            <div className="text-sm opacity-80 mt-1">优质量化因子库</div>
+          </Link>
+          <Link href="/strategies" className="bg-gradient-to-br from-orange-500 to-orange-600 text-white rounded-lg shadow p-6 hover:from-orange-600 hover:to-orange-700 transition-all">
+            <div className="text-2xl mb-2">📈</div>
+            <div className="text-lg font-bold">量化策略</div>
+            <div className="text-sm opacity-80 mt-1">策略创建与回测</div>
+          </Link>
+        </div>
+      </section>
+
+      {/* 快捷入口 */}
       <section className="mb-8">
         <h2 className="text-2xl font-bold text-gray-900 mb-4">快捷入口</h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <Link href="/market" className="bg-emerald-600 text-white rounded-lg shadow p-6 hover:bg-emerald-700 transition-colors">
-            <div className="text-xl font-bold">行情中心</div>
-            <div className="text-sm opacity-80 mt-1">实时行情 K线数据</div>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <Link href="/market" className="bg-white rounded-lg shadow p-4 hover:shadow-md transition-shadow text-center">
+            <div className="text-2xl mb-2">📊</div>
+            <div className="font-medium text-gray-900">行情中心</div>
           </Link>
-          <Link href="/research/industries" className="bg-blue-600 text-white rounded-lg shadow p-6 hover:bg-blue-700 transition-colors">
-            <div className="text-xl font-bold">行业研究</div>
-            <div className="text-sm opacity-80 mt-1">行业深度报告</div>
+          <Link href="/news" className="bg-white rounded-lg shadow p-4 hover:shadow-md transition-shadow text-center">
+            <div className="text-2xl mb-2">📰</div>
+            <div className="font-medium text-gray-900">每日资讯</div>
           </Link>
-          <Link href="/research/companies" className="bg-purple-600 text-white rounded-lg shadow p-6 hover:bg-purple-700 transition-colors">
-            <div className="text-xl font-bold">企业研究</div>
-            <div className="text-sm opacity-80 mt-1">上市公司分析</div>
+          <Link href="/research/industries" className="bg-white rounded-lg shadow p-4 hover:shadow-md transition-shadow text-center">
+            <div className="text-2xl mb-2">🏭</div>
+            <div className="font-medium text-gray-900">行业研究</div>
           </Link>
-          <Link href="/factors" className="bg-orange-600 text-white rounded-lg shadow p-6 hover:bg-orange-700 transition-colors">
-            <div className="text-xl font-bold">因子实验室</div>
-            <div className="text-sm opacity-80 mt-1">量化因子研究</div>
+          <Link href="/research/companies" className="bg-white rounded-lg shadow p-4 hover:shadow-md transition-shadow text-center">
+            <div className="text-2xl mb-2">🏢</div>
+            <div className="font-medium text-gray-900">企业研究</div>
+          </Link>
+          <Link href="/risk" className="bg-white rounded-lg shadow p-4 hover:shadow-md transition-shadow text-center">
+            <div className="text-2xl mb-2">🛡️</div>
+            <div className="font-medium text-gray-900">风控仪表盘</div>
           </Link>
         </div>
       </section>
@@ -117,7 +148,7 @@ export default async function HomePage() {
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {hotData?.data?.slice(0, 10).map((stock: any, i: number) => {
-                const { class: colorClass, sign } = formatChange(stock['涨跌幅'], stock['涨跌幅'])
+                const { class: colorClass, sign } = formatChange(stock['涨跌幅'])
                 return (
                   <tr key={i} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{stock['代码']}</td>
@@ -149,6 +180,7 @@ export default async function HomePage() {
             <ul className="text-gray-600 space-y-2 text-sm">
               <li>• 论文转因子 - 学术论文一键转化为量化因子</li>
               <li>• 因子实验室 - 可视化因子研究与回测</li>
+              <li>• 量化策略 - 策略创建与自动化回测</li>
               <li>• 智能风控 - 组合VaR/CVaR实时监控</li>
             </ul>
           </div>
