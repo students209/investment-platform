@@ -93,6 +93,7 @@ export interface ReportMeta {
   date: string;
   tags?: string[];
   summary?: string;
+  excerpt?: string;
   author?: string;
   slug: string;
   filename: string;
@@ -101,6 +102,50 @@ export interface ReportMeta {
 export interface Report extends ReportMeta {
   body: string;
   category?: string;
+}
+
+// 从 markdown body 中提取关键段落作为卡片摘要
+function extractExcerpt(body: string, category: string): string {
+  let sectionPattern: RegExp;
+  
+  switch (category) {
+    case 'daily':
+      // 提取 【核心观点】 段落
+      sectionPattern = /##\s*【核心观点】\s*\n([\s\S]*?)(?=\n---)/;
+      break;
+    case 'industry':
+      // 提取 一、行业定义与概况 段落
+      sectionPattern = /##\s*一、行业定义与概况\s*\n([\s\S]*?)(?=\n---)/;
+      break;
+    case 'company':
+      // 提取 一、公司概况 段落
+      sectionPattern = /##\s*一、公司概况\s*\n([\s\S]*?)(?=\n---)/;
+      break;
+    default:
+      return '';
+  }
+  
+  const match = body.match(sectionPattern);
+  if (!match) return '';
+  
+  // 清理提取的内容：去掉 markdown 标记，保留纯文本
+  let text = match[1]
+    .replace(/^#{1,6}\s+/gm, '')        // 去掉标题标记
+    .replace(/\*\*(.*?)\*\*/g, '$1')     // 去掉粗体标记
+    .replace(/\*(.*?)\*/g, '$1')         // 去掉斜体标记
+    .replace(/^>\s*/gm, '')             // 去掉引用标记
+    .replace(/^-\s+/gm, '• ')           // 把列表标记改为 bullet
+    .replace(/\|[^\n]*\|/g, '')         // 去掉表格行
+    .replace(/^[\s-]*$/gm, '')          // 去掉空行和分隔行
+    .replace(/\n{2,}/g, '\n')           // 合并多个换行
+    .trim();
+  
+  // 限制长度
+  if (text.length > 200) {
+    text = text.slice(0, 200) + '...';
+  }
+  
+  return text;
 }
 
 // 从文件名提取标题
@@ -137,11 +182,13 @@ export async function getIndustryReports(): Promise<Report[]> {
       const title = data.title || extractTitleFromFilename(file);
       const date = data.date || extractDateFromFilename(file);
       
+      const excerpt = extractExcerpt(body, 'industry');
       return {
         title,
         date,
         tags: data.tags || [],
         summary: data.summary || '',
+        excerpt,
         author: data.author || '',
         slug: toUrlSlug(file),
         filename: file,
@@ -184,11 +231,13 @@ export async function getCompanyReports(): Promise<Report[]> {
       const title = data.title || extractTitleFromFilename(file);
       const date = data.date || extractDateFromFilename(file);
       
+      const excerpt = extractExcerpt(body, 'company');
       return {
         title,
         date,
         tags: data.tags || [],
         summary: data.summary || '',
+        excerpt,
         author: data.author || '',
         slug: toUrlSlug(file),
         filename: file,
@@ -230,11 +279,13 @@ export async function getDailyReports(): Promise<Report[]> {
       const title = data.title || (titleMatch ? titleMatch[1] : file.replace('.md', ''));
       const date = data.date || extractDateFromFilename(file);
       
+      const excerpt = extractExcerpt(body, 'daily');
       return {
         title,
         date,
         tags: data.tags || [],
         summary: data.summary || '',
+        excerpt,
         author: data.author || '',
         slug: toUrlSlug(file),
         filename: file,

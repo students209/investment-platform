@@ -90,7 +90,7 @@ export async function convertPaper(data: {
   text?: string;
   filename?: string;
 }) {
-  const res = await fetch(`${API_BASE}/api/paper/convert`, {
+  const res = await fetch('/api/paper/convert', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),

@@ -44,9 +44,9 @@ export default async function CompaniesPage() {
               <h3 className="text-lg font-semibold text-gray-900 mb-2 line-clamp-2">
                 {report.title}
               </h3>
-              {report.summary && (
-                <p className="text-gray-600 text-sm line-clamp-3">
-                  {report.summary}
+              {(report.excerpt || report.summary) && (
+                <p className="text-gray-600 text-sm line-clamp-4 whitespace-pre-line">
+                  {report.excerpt || report.summary}
                 </p>
               )}
               <div className="mt-4 text-emerald-600 text-sm font-medium">

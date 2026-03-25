@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import ReactMarkdown from 'react-markdown'
+import MarkdownRenderer from '@/components/MarkdownRenderer'
 import { getReport, getDailyReports } from '@/lib/hugo'
 
 export async function generateStaticParams() {
@@ -55,8 +55,8 @@ export default async function NewsDetail({
           )}
         </header>
 
-        <div className="prose prose-lg max-w-none">
-          <ReactMarkdown>{report.body}</ReactMarkdown>
+        <div className="max-w-none">
+          <MarkdownRenderer content={report.body} />
         </div>
       </article>
 

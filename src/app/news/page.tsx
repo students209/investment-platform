@@ -36,9 +36,9 @@ export default async function NewsPage() {
               <h2 className="text-lg font-semibold text-gray-900 mb-3 line-clamp-2">
                 {report.title}
               </h2>
-              {report.summary && (
-                <p className="text-gray-600 text-sm line-clamp-3 flex-1">
-                  {report.summary}
+              {(report.excerpt || report.summary) && (
+                <p className="text-gray-600 text-sm line-clamp-4 flex-1 whitespace-pre-line">
+                  {report.excerpt || report.summary}
                 </p>
               )}
               <div className="mt-4 pt-4 border-t">
