@@ -12,7 +12,7 @@ import matter from 'gray-matter';
 const IS_VERCEL = process.env.VERCEL === '1';
 
 // 本地开发: 软链接路径
-const LOCAL_HUGO_PATH = '/Users/alpha/investment-platform/data/insights';
+const LOCAL_HUGO_PATH = '/Users/alpha/Documents/learn/openclaw_project/investment-platform/data/insights';
 // Vercel: public 目录下的 hugo-data
 const VERCEL_HUGO_PATH = path.join(process.cwd(), 'public', 'hugo-data');
 
