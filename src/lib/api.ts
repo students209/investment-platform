@@ -1,0 +1,97 @@
+/**
+ * API 客户端 - 调用 FastAPI 后端
+ */
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
+async function fetchAPI(endpoint: string) {
+  const res = await fetch(`${API_BASE}${endpoint}`);
+  if (!res.ok) throw new Error(`API Error: ${res.status}`);
+  return res.json();
+}
+
+// ============ 行情 API ============
+
+export async function getIndexQuote() {
+  return fetchAPI('/api/market/index');
+}
+
+export async function getStockQuote(code: string) {
+  return fetchAPI(`/api/market/stock/${code}`);
+}
+
+export async function getKline(code: string, period = 'daily', startDate?: string, endDate?: string) {
+  let url = `/api/market/kline/${code}?period=${period}`;
+  if (startDate) url += `&start_date=${startDate}`;
+  if (endDate) url += `&end_date=${endDate}`;
+  return fetchAPI(url);
+}
+
+export async function getMoneyFlow(code: string) {
+  return fetchAPI(`/api/market/money-flow/${code}`);
+}
+
+export async function getHotStocks() {
+  return fetchAPI('/api/market/hot-stocks');
+}
+
+// ============ 因子 API ============
+
+export async function getFactorList(userId?: string) {
+  let url = '/api/factors/list';
+  if (userId) url += `?user_id=${userId}`;
+  return fetchAPI(url);
+}
+
+export async function computeFactor(data: {
+  name: string;
+  formula: string;
+  params: Record<string, number>;
+  codes: string[];
+  start_date: string;
+  end_date: string;
+}) {
+  const res = await fetch(`${API_BASE}/api/factors/compute`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function backtestFactor(data: {
+  name: string;
+  formula: string;
+  params: Record<string, number>;
+  codes: string[];
+  start_date: string;
+  end_date: string;
+}) {
+  const res = await fetch(`${API_BASE}/api/factors/backtest`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+// ============ 风控 API ============
+
+export async function getRiskDashboard() {
+  return fetchAPI('/api/risk/dashboard');
+}
+
+export async function calculatePortfolioRisk(holdings: Array<{
+  code: string;
+  name: string;
+  shares: number;
+  cost: number;
+  current_price: number;
+}>) {
+  const res = await fetch(`${API_BASE}/api/risk/portfolio`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(holdings),
+  });
+  return res.json();
+}
