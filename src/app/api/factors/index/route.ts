@@ -17,22 +17,41 @@ function parseSummaryCSV(): Record<string, any> {
     const raw = fs.readFileSync(SUMMARY_CSV_PATH, 'utf-8')
     const lines = raw.trim().split('\n')
     if (lines.length < 2) return result
-    // Header: Factor,IC_Mean,IC_T_Stat,Annual_Ret,Sharpe,MaxDD,WinRate,Turnover
+    // Header (2026 v6): 28 columns
+    // Factor,Start_Date,End_Date,Benchmark,Group_Num,Factor_Direction,Neutralizing,Filter_ST,Filter_New,Filter_Suspend,IC_Mean,IC_Std,IC_IR,IC_T_Stat,IC_WinRate,IC_Above_2pct,LS_Annual_Ret,LS_Sharpe,LS_MaxDD,LS_WinRate,LS_Turnover,Long_Annual_Ret,Long_Sharpe,Long_MaxDD,Short_Annual_Ret,Short_Sharpe,Short_MaxDD,Generated_At
     const seen = new Set<string>()
     for (let i = 1; i < lines.length; i++) {
-      const cols = lines[i].split(',')
-      if (cols.length < 8) continue
+      const line = lines[i].trim()
+      if (!line) continue
+      const cols = line.split(',')
+      if (cols.length < 27) continue // Allow slightly fewer if it fits indices used
+      
       const name = cols[0].trim()
-      if (seen.has(name)) continue // deduplicate rows
+      if (!name || seen.has(name)) continue 
       seen.add(name)
+      
       result[name] = {
-        ic_mean: parseFloat(cols[1]),
-        ic_t_stat: parseFloat(cols[2]),
-        annual_ret: parseFloat(cols[3]),
-        sharpe: parseFloat(cols[4]),
-        max_dd: parseFloat(cols[5]),
-        win_rate: parseFloat(cols[6]),
-        turnover: parseFloat(cols[7]),
+        name,
+        params: {
+          start_date: cols[1],
+          end_date: cols[2],
+          benchmark: cols[3],
+          group_num: cols[4],
+          neutralize: cols[6],
+        },
+        ic_mean: parseFloat(cols[10]),
+        ic_t_stat: parseFloat(cols[13]),
+        annual_ret: parseFloat(cols[16]), // LS_Annual_Ret
+        sharpe: parseFloat(cols[17]),    // LS_Sharpe
+        max_dd: parseFloat(cols[18]),    // LS_MaxDD
+        win_rate: parseFloat(cols[19]),  // LS_WinRate
+        turnover: parseFloat(cols[20]),  // LS_Turnover
+        long_metrics: {
+          annual_ret: parseFloat(cols[21]),
+          sharpe: parseFloat(cols[22]),
+          max_dd: parseFloat(cols[23]),
+        },
+        generated_at: cols[27]
       }
     }
   } catch (e) {

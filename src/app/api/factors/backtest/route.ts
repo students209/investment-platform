@@ -84,28 +84,42 @@ export async function POST(request: NextRequest) {
         return
       }
 
-      console.log(`[Backtest] Task ${taskId} completed`)
+      console.log(`[Backtest] Task ${taskId} main backtest completed. Starting enhancement...`)
+      tasks[taskId].logs.push("\n>>> 正在进行 AI 深度诊断与报告增强...\n")
 
-      // Collect results: read generated HTML reports
-      const results: Record<string, any> = {}
-      for (const factor of safeFactors) {
-        const reportPath = path.join(REPORTS_DIR, `report_${factor}.html`)
-        if (fs.existsSync(reportPath)) {
-          results[factor] = {
-            success: true,
-            reportPath,
-            reportSize: fs.statSync(reportPath).size,
-          }
-        } else {
-          results[factor] = {
-            success: false,
-            error: '未找到生成的报告文件',
+      const enhanceArgs = ['enhance_report.py', '--factors', ...safeFactors]
+      const enhanceProcess = spawn('python3', enhanceArgs, {
+        cwd: BACKTEST_DIR,
+        env: { ...process.env, PYTHONPATH: `${ALPHA_PY_DIR}:${process.env.PYTHONPATH || ''}` },
+      })
+
+      enhanceProcess.stdout.on('data', (data) => tasks[taskId].logs.push(data.toString()))
+      enhanceProcess.stderr.on('data', (data) => tasks[taskId].logs.push(data.toString()))
+
+      enhanceProcess.on('close', (enhanceCode) => {
+        console.log(`[Backtest] Task ${taskId} enhancement completed (code ${enhanceCode})`)
+        
+        // Collect results: read generated HTML reports
+        const results: Record<string, any> = {}
+        for (const factor of safeFactors) {
+          const reportPath = path.join(REPORTS_DIR, `report_${factor}.html`)
+          if (fs.existsSync(reportPath)) {
+            results[factor] = {
+              success: true,
+              reportPath,
+              reportSize: fs.statSync(reportPath).size,
+            }
+          } else {
+            results[factor] = {
+              success: false,
+              error: '未找到生成的报告文件',
+            }
           }
         }
-      }
 
-      tasks[taskId].results = results
-      tasks[taskId].status = 'done'
+        tasks[taskId].results = results
+        tasks[taskId].status = 'done'
+      })
     })
 
     pyProcess.on('error', (err) => {

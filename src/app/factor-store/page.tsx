@@ -19,6 +19,14 @@ type Factor = {
     max_dd: number
     win_rate: number
     turnover: number
+    params?: {
+      start_date: string
+      end_date: string
+      benchmark: string
+      group_num: string
+      neutralize: string
+    }
+    generated_at?: string
   } | null
 }
 
@@ -282,26 +290,35 @@ export default function FactorStorePage() {
 
               {/* Backtest metrics (for backtested module) */}
               {factor.backtested && factor.backtest_metrics && (
-                <div className="grid grid-cols-3 gap-2 mb-4 p-3 bg-gray-50 rounded-lg">
-                  <div className="text-center">
-                    <div className="text-xs text-gray-500">IC均值</div>
-                    <div className={`font-bold text-sm ${factor.backtest_metrics.ic_mean > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                      {formatMetric(factor.backtest_metrics.ic_mean)}
+                <>
+                  <div className="grid grid-cols-3 gap-2 mb-4 p-3 bg-gray-50 rounded-lg">
+                    <div className="text-center">
+                      <div className="text-xs text-gray-500">IC均值</div>
+                      <div className={`font-bold text-sm ${(factor.backtest_metrics?.ic_mean ?? 0) > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                        {formatMetric(factor.backtest_metrics?.ic_mean ?? 0)}
+                      </div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-xs text-gray-500">夏普</div>
+                      <div className={`font-bold text-sm ${(factor.backtest_metrics?.sharpe ?? 0) > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                        {factor.backtest_metrics?.sharpe?.toFixed(2)}
+                      </div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-xs text-gray-500">最大回撤</div>
+                      <div className="font-bold text-sm text-red-500">
+                        {formatMetric(factor.backtest_metrics?.max_dd ?? 0, true)}
+                      </div>
                     </div>
                   </div>
-                  <div className="text-center">
-                    <div className="text-xs text-gray-500">夏普</div>
-                    <div className={`font-bold text-sm ${factor.backtest_metrics.sharpe > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                      {factor.backtest_metrics.sharpe?.toFixed(2)}
+                  {factor.backtest_metrics?.params && (
+                    <div className="bg-gray-50 rounded-lg p-2 mb-3 text-[10px] text-gray-500 grid grid-cols-2 gap-x-2">
+                      <div>基准: {factor.backtest_metrics.params.benchmark}</div>
+                      <div>分组: {factor.backtest_metrics.params.group_num}</div>
+                      <div className="col-span-2 mt-1">期间: {factor.backtest_metrics.params.start_date} ~ {factor.backtest_metrics.params.end_date}</div>
                     </div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-xs text-gray-500">最大回撤</div>
-                    <div className="font-bold text-sm text-red-500">
-                      {formatMetric(factor.backtest_metrics.max_dd, true)}
-                    </div>
-                  </div>
-                </div>
+                  )}
+                </>
               )}
 
               {/* Actions */}
@@ -457,8 +474,8 @@ export default function FactorStorePage() {
                     <th className="px-3 py-3 text-center font-medium text-gray-700 border">年化收益</th>
                     <th className="px-3 py-3 text-center font-medium text-gray-700 border">夏普</th>
                     <th className="px-3 py-3 text-center font-medium text-gray-700 border">最大回撤</th>
-                    <th className="px-3 py-3 text-center font-medium text-gray-700 border">胜率</th>
-                    <th className="px-3 py-3 text-center font-medium text-gray-700 border">换手率</th>
+                    <th className="px-3 py-3 text-center font-medium text-gray-700 border">回测区间</th>
+                    <th className="px-3 py-3 text-center font-medium text-gray-700 border">基准/参数</th>
                     <th className="px-3 py-3 text-center font-medium text-gray-700 border">操作</th>
                   </tr>
                 </thead>
@@ -481,11 +498,11 @@ export default function FactorStorePage() {
                       <td className="px-3 py-2.5 border text-center text-sm text-red-500">
                         {formatMetric(f.backtest_metrics?.max_dd ?? 0, true)}
                       </td>
-                      <td className="px-3 py-2.5 border text-center text-sm">
-                        {formatMetric(f.backtest_metrics?.win_rate ?? 0, true)}
+                      <td className="px-3 py-2.5 border text-center text-[10px] text-gray-500">
+                        {f.backtest_metrics?.params?.start_date}<br/>~<br/>{f.backtest_metrics?.params?.end_date}
                       </td>
-                      <td className="px-3 py-2.5 border text-center text-sm">
-                        {formatMetric(f.backtest_metrics?.turnover ?? 0, true)}
+                      <td className="px-3 py-2.5 border text-center text-xs text-gray-600">
+                        {f.backtest_metrics?.params?.benchmark}<br/>{f.backtest_metrics?.params?.group_num}组 / {f.backtest_metrics?.params?.neutralize === 'True' ? '中性化' : '原始'}
                       </td>
                       <td className="px-3 py-2.5 border text-center">
                         <button
