@@ -121,11 +121,20 @@ export async function getFactorsIndex(params?: {
   return res.json();
 }
 
-export async function startBacktest(factors: string[]) {
+export async function startBacktest(
+  factors: string[],
+  params?: {
+    startDate?: string
+    endDate?: string
+    groupNum?: number
+    benchmark?: string
+    neutralize?: boolean
+  }
+) {
   const res = await fetch(`${LOCAL_API}/api/factors/backtest`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ factors }),
+    body: JSON.stringify({ factors, ...params }),
   });
   return res.json();
 }

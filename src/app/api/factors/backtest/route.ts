@@ -3,7 +3,7 @@
  * Runs factor_backtest_v6.py locally and returns HTML report
  */
 import { NextRequest, NextResponse } from 'next/server'
-import { exec } from 'child_process'
+import { spawn } from 'child_process'
 import fs from 'fs'
 import path from 'path'
 
@@ -19,6 +19,7 @@ const tasks: Record<string, {
   factors: string[]
   results: Record<string, any>
   error?: string
+  logs: string[]
   startTime: number
 }> = {}
 
@@ -29,7 +30,7 @@ function generateTaskId(): string {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { factors, startDate, endDate } = body
+    const { factors, startDate, endDate, groupNum, benchmark, neutralize } = body
 
     if (!factors || !Array.isArray(factors) || factors.length === 0) {
       return NextResponse.json({ success: false, error: '请选择至少一个因子' })
@@ -46,20 +47,40 @@ export async function POST(request: NextRequest) {
       status: 'running',
       factors: safeFactors,
       results: {},
+      logs: [],
       startTime: Date.now(),
     }
 
-    // Run the backtest script asynchronously
-    const factorArgs = safeFactors.join(' ')
-    const cmd = `cd "${BACKTEST_DIR}" && PYTHONPATH="${ALPHA_PY_DIR}:$PYTHONPATH" python3 factor_backtest_v6.py --factors ${factorArgs}`
+    // Construct arguments
+    const args = ['factor_backtest_v6.py', '--factors', ...safeFactors]
+    if (startDate) { args.push('--start_date', startDate) }
+    if (endDate) { args.push('--end_date', endDate) }
+    if (benchmark) { args.push('--benchmark', benchmark) }
+    if (groupNum) { args.push('--group_num', groupNum.toString()) }
+    if (neutralize !== undefined) { args.push('--neutralize', neutralize ? '1' : '0') }
 
-    console.log(`[Backtest] Starting task ${taskId}: ${cmd}`)
+    console.log(`[Backtest] Starting task ${taskId} with args:`, args.join(' '))
 
-    exec(cmd, { timeout: 600000, maxBuffer: 50 * 1024 * 1024 }, (error, stdout, stderr) => {
-      if (error) {
-        console.error(`[Backtest] Task ${taskId} error:`, error.message)
+    const pyProcess = spawn('python3', args, {
+      cwd: BACKTEST_DIR,
+      env: { ...process.env, PYTHONPATH: `${ALPHA_PY_DIR}:${process.env.PYTHONPATH || ''}` },
+    })
+
+    pyProcess.stdout.on('data', (data) => {
+      const txt = data.toString()
+      tasks[taskId].logs.push(txt)
+    })
+
+    pyProcess.stderr.on('data', (data) => {
+      const txt = data.toString()
+      tasks[taskId].logs.push(txt)
+    })
+
+    pyProcess.on('close', (code) => {
+      if (code !== 0) {
+        console.error(`[Backtest] Task ${taskId} error code:`, code)
         tasks[taskId].status = 'error'
-        tasks[taskId].error = stderr || error.message
+        tasks[taskId].error = `脚本退出码: ${code}`
         return
       }
 
@@ -85,6 +106,11 @@ export async function POST(request: NextRequest) {
 
       tasks[taskId].results = results
       tasks[taskId].status = 'done'
+    })
+
+    pyProcess.on('error', (err) => {
+      tasks[taskId].status = 'error'
+      tasks[taskId].error = err.message
     })
 
     return NextResponse.json({
@@ -132,6 +158,7 @@ export async function GET(request: NextRequest) {
       factors: task.factors,
       results: task.results,
       error: task.error,
+      logs: task.logs,
       elapsed: Math.round((Date.now() - task.startTime) / 1000),
     }
   })

@@ -41,6 +41,7 @@ function FactorsContent() {
   const [backtestElapsed, setBacktestElapsed] = useState(0)
   const [backtestResults, setBacktestResults] = useState<Record<string, any>>({})
   const [backtestRunning, setBacktestRunning] = useState(false)
+  const [backtestLogs, setBacktestLogs] = useState<string[]>([])
 
   const [activeReport, setActiveReport] = useState('')
   const [reportHtml, setReportHtml] = useState('')
@@ -131,11 +132,18 @@ function FactorsContent() {
     setBacktestRunning(true)
     setBacktestStatus('正在启动回测...')
     setBacktestResults({})
+    setBacktestLogs([])
     setActiveReport('')
     setReportHtml('')
 
     try {
-      const res = await startBacktest(selectedFactors)
+      const res = await startBacktest(selectedFactors, {
+        startDate,
+        endDate,
+        groupNum,
+        benchmark,
+        neutralize
+      })
       if (!res.success) {
         setBacktestStatus(`错误: ${res.error}`)
         setBacktestRunning(false)
@@ -157,6 +165,8 @@ function FactorsContent() {
         const res = await getBacktestStatus(taskId)
         if (!res.success) return
         setBacktestElapsed(res.data.elapsed)
+        setBacktestLogs(res.data.logs || [])
+        
         if (res.data.status === 'done') {
           clearInterval(pollRef.current!)
           setBacktestStatus('回测完成 ✅')
@@ -414,15 +424,20 @@ function FactorsContent() {
             {backtestRunning ? `⏳ ${backtestStatus}` : `开始回测 (${selectedFactors.length} 个因子)`}
           </button>
 
-          {/* Progress */}
+          {/* Progress & Logs */}
           {backtestRunning && (
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-              <div className="flex items-center space-x-3">
-                <div className="animate-spin w-5 h-5 border-2 border-amber-500 border-t-transparent rounded-full" />
+            <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden flex flex-col">
+              <div className="flex items-center space-x-3 px-4 py-3 bg-gray-800 border-b border-gray-700">
+                <div className="animate-spin w-4 h-4 border-2 border-emerald-500 border-t-transparent rounded-full" />
                 <div>
-                  <div className="font-medium text-amber-800">{backtestStatus}</div>
-                  <div className="text-sm text-amber-600">已运行 {backtestElapsed} 秒 · 因子回测可能需要数分钟</div>
+                  <div className="font-medium text-emerald-400 text-sm">{backtestStatus}</div>
+                  <div className="text-xs text-gray-400">已运行 {backtestElapsed} 秒 · 因子回测可能需要数分钟</div>
                 </div>
+              </div>
+              <div className="p-4 overflow-y-auto max-h-96 min-h-[16rem] bg-black">
+                <pre className="text-left text-xs text-green-400 font-mono whitespace-pre-wrap break-all">
+                  {backtestLogs.length === 0 ? '正在初始化执行引擎...' : backtestLogs.join('')}
+                </pre>
               </div>
             </div>
           )}
