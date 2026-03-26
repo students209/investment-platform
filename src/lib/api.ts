@@ -102,6 +102,58 @@ export async function convertPaper(data: {
   return res.json();
 }
 
+// ============ 因子索引/回测/迭代 API (本地 Next.js) ============
+
+const LOCAL_API = process.env.NEXT_PUBLIC_NEXT_API_URL || '';
+
+export async function getFactorsIndex(params?: {
+  filter?: 'backtested' | 'untested';
+  search?: string;
+  page?: number;
+  pageSize?: number;
+}) {
+  const sp = new URLSearchParams();
+  if (params?.filter) sp.set('filter', params.filter);
+  if (params?.search) sp.set('search', params.search);
+  if (params?.page) sp.set('page', String(params.page));
+  if (params?.pageSize) sp.set('pageSize', String(params.pageSize));
+  const res = await fetch(`${LOCAL_API}/api/factors/index?${sp.toString()}`);
+  return res.json();
+}
+
+export async function startBacktest(factors: string[]) {
+  const res = await fetch(`${LOCAL_API}/api/factors/backtest`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ factors }),
+  });
+  return res.json();
+}
+
+export async function getBacktestStatus(taskId: string) {
+  const res = await fetch(`${LOCAL_API}/api/factors/backtest?taskId=${taskId}`);
+  return res.json();
+}
+
+export async function getBacktestReport(factor: string) {
+  const res = await fetch(`${LOCAL_API}/api/factors/backtest?factor=${factor}`);
+  return res.text();
+}
+
+export async function startIteration(factors: string[], rounds = 1) {
+  const res = await fetch(`${LOCAL_API}/api/factors/iterate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ factors, rounds }),
+  });
+  return res.json();
+}
+
+export async function getIterationStatus(taskId: string) {
+  const res = await fetch(`${LOCAL_API}/api/factors/iterate?taskId=${taskId}`);
+  return res.json();
+}
+
 // ============ 风控 API ============
 
 export async function getRiskDashboard() {

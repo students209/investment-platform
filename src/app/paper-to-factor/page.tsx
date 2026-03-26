@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import { convertPaper } from '@/lib/api'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -22,6 +23,7 @@ interface ParsedReport {
 }
 
 export default function PaperToFactorPage() {
+  const router = useRouter()
   const [inputMode, setInputMode] = useState<'url' | 'text' | 'file'>('url')
   const [paperUrl, setPaperUrl] = useState('')
   const [paperText, setPaperText] = useState('')
@@ -351,6 +353,12 @@ export default function PaperToFactorPage() {
                   className="flex-1 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-white font-medium text-sm transition-colors"
                 >
                   💾 下载报告
+                </button>
+                <button
+                  onClick={() => router.push('/factor-store')}
+                  className="flex-1 py-2.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-medium text-sm transition-colors"
+                >
+                  🏪 查看因子超市
                 </button>
               </div>
             </div>
