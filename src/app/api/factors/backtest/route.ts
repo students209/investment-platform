@@ -8,8 +8,10 @@ import fs from 'fs'
 import path from 'path'
 
 const BACKTEST_DIR = '/Users/alpha/.openclaw/workspace-quant_engineer/skills/因子回测报告'
+const ALPHA_PY_DIR = '/Users/alpha/.openclaw/workspace-quant_engineer/skills/文章转因子'
 const REPORTS_DIR = path.join(BACKTEST_DIR, 'factor_reports')
 const SCRIPT_PATH = path.join(BACKTEST_DIR, 'factor_backtest_v6.py')
+const ECHARTS_CDN = 'https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js'
 
 // In-memory task store for async backtest tracking
 const tasks: Record<string, {
@@ -49,7 +51,7 @@ export async function POST(request: NextRequest) {
 
     // Run the backtest script asynchronously
     const factorArgs = safeFactors.join(' ')
-    const cmd = `cd "${BACKTEST_DIR}" && python3 factor_backtest_v6.py --factors ${factorArgs}`
+    const cmd = `cd "${BACKTEST_DIR}" && PYTHONPATH="${ALPHA_PY_DIR}:$PYTHONPATH" python3 factor_backtest_v6.py --factors ${factorArgs}`
 
     console.log(`[Backtest] Starting task ${taskId}: ${cmd}`)
 
@@ -106,7 +108,10 @@ export async function GET(request: NextRequest) {
     const safeFactor = factor.replace(/[^a-zA-Z0-9_]/g, '')
     const reportPath = path.join(REPORTS_DIR, `report_${safeFactor}.html`)
     if (fs.existsSync(reportPath)) {
-      const html = fs.readFileSync(reportPath, 'utf-8')
+      let html = fs.readFileSync(reportPath, 'utf-8')
+      // Replace relative echarts path with CDN so charts render in iframe
+      html = html.replace(/src="\.\.?\/echarts\.min\.js"/g, `src="${ECHARTS_CDN}"`)
+      html = html.replace(/src='\.\.\/echarts\.min\.js'/g, `src='${ECHARTS_CDN}'`)
       return new NextResponse(html, {
         headers: { 'Content-Type': 'text/html; charset=utf-8' },
       })

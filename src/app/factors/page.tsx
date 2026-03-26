@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { Suspense, useState, useEffect, useRef, useCallback } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { getFactorsIndex, startBacktest, getBacktestStatus, getBacktestReport, startIteration, getIterationStatus } from '@/lib/api'
 
 type Factor = {
@@ -12,8 +13,14 @@ type Factor = {
   backtest_metrics: any
 }
 
-export default function FactorsPage() {
-  const [activeTab, setActiveTab] = useState<'backtest' | 'iterate'>('backtest')
+function FactorsContent() {
+  const searchParams = useSearchParams()
+
+  // Read URL query params for prefill
+  const urlTab = searchParams.get('tab') as 'backtest' | 'iterate' | null
+  const urlFactor = searchParams.get('factor')
+
+  const [activeTab, setActiveTab] = useState<'backtest' | 'iterate'>(urlTab || 'backtest')
 
   // ---- Backtest Tab State ----
   const [searchTerm, setSearchTerm] = useState('')
@@ -21,6 +28,13 @@ export default function FactorsPage() {
   const [selectedFactors, setSelectedFactors] = useState<string[]>([])
   const [searching, setSearching] = useState(false)
   const [showDropdown, setShowDropdown] = useState(false)
+
+  // Backtest parameters
+  const [startDate, setStartDate] = useState('2022-01-01')
+  const [endDate, setEndDate] = useState('2024-12-31')
+  const [groupNum, setGroupNum] = useState(10)
+  const [benchmark, setBenchmark] = useState('中证500')
+  const [neutralize, setNeutralize] = useState(true)
 
   const [backtestTaskId, setBacktestTaskId] = useState('')
   const [backtestStatus, setBacktestStatus] = useState<string>('')
@@ -46,6 +60,22 @@ export default function FactorsPage() {
 
   const pollRef = useRef<NodeJS.Timeout | null>(null)
   const iterPollRef = useRef<NodeJS.Timeout | null>(null)
+  const prefilled = useRef(false)
+
+  // ---- Prefill from URL query params ----
+  useEffect(() => {
+    if (prefilled.current || !urlFactor) return
+    prefilled.current = true
+
+    if (urlTab === 'iterate') {
+      setIterFactorName(urlFactor)
+      setIterSearch(urlFactor)
+    } else {
+      // Backtest tab: add the factor to selected list
+      setSelectedFactors([urlFactor])
+      setSearchTerm(urlFactor)
+    }
+  }, [urlFactor, urlTab])
 
   // ---- Search factors ----
   const searchFactors = useCallback(async (query: string) => {
@@ -313,16 +343,76 @@ export default function FactorsPage() {
                 ))}
               </div>
             )}
-
-            {/* Start Button */}
-            <button
-              onClick={handleStartBacktest}
-              disabled={backtestRunning || selectedFactors.length === 0}
-              className="mt-6 w-full py-3 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium transition-colors"
-            >
-              {backtestRunning ? `⏳ ${backtestStatus}` : `开始回测 (${selectedFactors.length} 个因子)`}
-            </button>
           </div>
+
+          {/* Backtest Parameters */}
+          <div className="bg-white rounded-xl shadow-sm border p-6">
+            <h2 className="text-lg font-bold mb-4">回测参数</h2>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">开始日期</label>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">结束日期</label>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">分组数</label>
+                <select
+                  value={groupNum}
+                  onChange={(e) => setGroupNum(Number(e.target.value))}
+                  className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                >
+                  <option value={5}>5 组</option>
+                  <option value={10}>10 组（默认）</option>
+                  <option value={20}>20 组</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">基准指数</label>
+                <select
+                  value={benchmark}
+                  onChange={(e) => setBenchmark(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                >
+                  <option value="中证500">中证500</option>
+                  <option value="沪深300">沪深300</option>
+                  <option value="中证1000">中证1000</option>
+                </select>
+              </div>
+            </div>
+            <div className="flex items-center mt-4 space-x-6">
+              <label className="flex items-center space-x-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={neutralize}
+                  onChange={(e) => setNeutralize(e.target.checked)}
+                  className="w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500"
+                />
+                <span className="text-sm text-gray-700">行业市值中性化</span>
+              </label>
+            </div>
+          </div>
+
+          {/* Start Button */}
+          <button
+            onClick={handleStartBacktest}
+            disabled={backtestRunning || selectedFactors.length === 0}
+            className="w-full py-3.5 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium transition-colors text-base"
+          >
+            {backtestRunning ? `⏳ ${backtestStatus}` : `开始回测 (${selectedFactors.length} 个因子)`}
+          </button>
 
           {/* Progress */}
           {backtestRunning && (
@@ -546,5 +636,13 @@ export default function FactorsPage() {
         </div>
       )}
     </div>
+  )
+}
+
+export default function FactorsPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-gray-500">加载实验室中...</div>}>
+      <FactorsContent />
+    </Suspense>
   )
 }
