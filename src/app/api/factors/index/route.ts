@@ -7,6 +7,7 @@ import fs from 'fs'
 import path from 'path'
 
 const FACTORS_INDEX_PATH = '/Users/alpha/.openclaw/workspace-quant_engineer/skills/文章转因子/factors_index.json'
+const FACTORS_INDEX_PATH_2 = '/Users/alpha/.openclaw/workspace-quant_engineer/skills/文章转因子/factors/factor_index.json'
 const SUMMARY_CSV_PATH = '/Users/alpha/.openclaw/workspace-quant_engineer/skills/因子回测报告/factor_reports/alpha_summary_complete.csv'
 
 function parseSummaryCSV(): Record<string, any> {
@@ -40,6 +41,17 @@ function parseSummaryCSV(): Record<string, any> {
   return result
 }
 
+function readFactorIndex(filePath: string): any[] {
+  try {
+    if (!fs.existsSync(filePath)) return []
+    const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'))
+    return data.factors || []
+  } catch (e) {
+    console.error(`[FactorIndex] Failed to read ${filePath}:`, e)
+    return []
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
@@ -48,17 +60,42 @@ export async function GET(request: NextRequest) {
     const page = parseInt(searchParams.get('page') || '1')
     const pageSize = parseInt(searchParams.get('pageSize') || '50')
 
-    // Read factors_index.json
-    if (!fs.existsSync(FACTORS_INDEX_PATH)) {
-      return NextResponse.json({ success: false, error: 'factors_index.json not found' })
-    }
+    // Read and merge both factor index files
+    const factors1 = readFactorIndex(FACTORS_INDEX_PATH)
+    const factors2 = readFactorIndex(FACTORS_INDEX_PATH_2)
 
-    const indexData = JSON.parse(fs.readFileSync(FACTORS_INDEX_PATH, 'utf-8'))
-    const allFactors: any[] = indexData.factors || []
+    // Merge: use name as key, first file takes priority, second adds missing ones
+    const nameSet = new Set<string>()
+    const allFactors: any[] = []
+    for (const f of factors1) {
+      if (!nameSet.has(f.name)) {
+        nameSet.add(f.name)
+        allFactors.push(f)
+      }
+    }
+    for (const f of factors2) {
+      if (!nameSet.has(f.name)) {
+        nameSet.add(f.name)
+        allFactors.push(f)
+      }
+    }
 
     // Read backtest summary
     const backtestData = parseSummaryCSV()
     const backtestNames = new Set(Object.keys(backtestData))
+
+    // Also add factors that are only in CSV but not in any index file
+    for (const csvName of backtestNames) {
+      if (!nameSet.has(csvName)) {
+        nameSet.add(csvName)
+        allFactors.push({
+          name: csvName,
+          category: 'backtested',
+          logic_summary: `Factor with backtest results`,
+          data_fields: [],
+        })
+      }
+    }
 
     // Enrich factors with backtest data and filter
     let enriched = allFactors.map((f: any) => {

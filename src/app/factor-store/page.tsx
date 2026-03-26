@@ -34,6 +34,7 @@ export default function FactorStorePage() {
   const [untestedCount, setUntestedCount] = useState(0)
   const [backtestedCount, setBacktestedCount] = useState(0)
   const [sortBy, setSortBy] = useState('name')
+  const [error, setError] = useState('')
 
   // Report modal state
   const [reportModal, setReportModal] = useState(false)
@@ -47,6 +48,7 @@ export default function FactorStorePage() {
 
   const loadFactors = useCallback(async () => {
     setLoading(true)
+    setError('')
     try {
       const res = await getFactorsIndex({
         filter: activeModule,
@@ -60,9 +62,12 @@ export default function FactorStorePage() {
         setTotal(res.data.total)
         setUntestedCount(res.data.untested_count)
         setBacktestedCount(res.data.backtested_count)
+      } else {
+        setError(res.error || '加载因子失败')
       }
     } catch (e) {
       console.error('Failed to load factors:', e)
+      setError('无法连接本地 API。请确保本地 Next.js 服务和 ngrok 隧道正在运行。')
     }
     setLoading(false)
   }, [activeModule, searchTerm, page])
@@ -213,6 +218,24 @@ export default function FactorStorePage() {
           </div>
         )}
       </div>
+
+      {/* Error */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-red-700 font-medium">⚠️ 加载失败</p>
+              <p className="text-red-600 text-sm mt-1">{error}</p>
+            </div>
+            <button
+              onClick={loadFactors}
+              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm"
+            >
+              重试
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Loading */}
       {loading && (
