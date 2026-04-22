@@ -17,14 +17,14 @@ function parseSummaryCSV(): Record<string, any> {
     const raw = fs.readFileSync(SUMMARY_CSV_PATH, 'utf-8')
     const lines = raw.trim().split('\n')
     if (lines.length < 2) return result
-    // Header (2026 v6): 28 columns
-    // Factor,Start_Date,End_Date,Benchmark,Group_Num,Factor_Direction,Neutralizing,Filter_ST,Filter_New,Filter_Suspend,IC_Mean,IC_Std,IC_IR,IC_T_Stat,IC_WinRate,IC_Above_2pct,LS_Annual_Ret,LS_Sharpe,LS_MaxDD,LS_WinRate,LS_Turnover,Long_Annual_Ret,Long_Sharpe,Long_MaxDD,Short_Annual_Ret,Short_Sharpe,Short_MaxDD,Generated_At
+    // Header (2026 v6): 29 columns
+    // Factor,Start_Date,End_Date,Benchmark,Group_Num,Factor_Direction,Neutralizing,Filter_ST,Filter_New,Filter_Suspend,IC_Mean,IC_Std,IC_IR,IC_T_Stat,IC_WinRate,IC_Above_2pct,LS_Annual_Ret,LS_Sharpe,LS_MaxDD,LS_WinRate,LS_Turnover,Long_Annual_Ret,Long_Sharpe,Long_MaxDD,Short_Annual_Ret,Short_Sharpe,Short_MaxDD,Generated_At,Is_Iterated
     const seen = new Set<string>()
     for (let i = 1; i < lines.length; i++) {
       const line = lines[i].trim()
       if (!line) continue
       const cols = line.split(',')
-      if (cols.length < 27) continue // Allow slightly fewer if it fits indices used
+      if (cols.length < 28) continue
       
       const name = cols[0].trim()
       if (!name || seen.has(name)) continue 
@@ -41,17 +41,18 @@ function parseSummaryCSV(): Record<string, any> {
         },
         ic_mean: parseFloat(cols[10]),
         ic_t_stat: parseFloat(cols[13]),
-        annual_ret: parseFloat(cols[16]), // LS_Annual_Ret
-        sharpe: parseFloat(cols[17]),    // LS_Sharpe
-        max_dd: parseFloat(cols[18]),    // LS_MaxDD
-        win_rate: parseFloat(cols[19]),  // LS_WinRate
-        turnover: parseFloat(cols[20]),  // LS_Turnover
+        annual_ret: parseFloat(cols[16]),
+        sharpe: parseFloat(cols[17]),
+        max_dd: parseFloat(cols[18]),
+        win_rate: parseFloat(cols[19]),
+        turnover: parseFloat(cols[20]),
         long_metrics: {
           annual_ret: parseFloat(cols[21]),
           sharpe: parseFloat(cols[22]),
           max_dd: parseFloat(cols[23]),
         },
-        generated_at: cols[27]
+        generated_at: cols[27],
+        is_iterated: cols[28]?.trim().toLowerCase() === 'true'
       }
     }
   } catch (e) {
@@ -75,6 +76,7 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const filter = searchParams.get('filter') // 'backtested' | 'untested' | null (all)
+    const subFilter = searchParams.get('subFilter') // 'all' | 'backtest_only' | 'iterated'
     const search = searchParams.get('search')?.toLowerCase() || ''
     const page = parseInt(searchParams.get('page') || '1')
     const pageSize = parseInt(searchParams.get('pageSize') || '50')
@@ -127,6 +129,7 @@ export async function GET(request: NextRequest) {
         source: f.source || '',
         backtested: !!bt,
         backtest_metrics: bt || null,
+        is_iterated: bt?.is_iterated || f.category === 'iterated' || (f.source && f.source.includes('iteration')),
       }
     })
 
@@ -144,6 +147,13 @@ export async function GET(request: NextRequest) {
       enriched = enriched.filter(f => f.backtested)
     } else if (filter === 'untested') {
       enriched = enriched.filter(f => !f.backtested)
+    }
+
+    // Sub-filter for backtested factors
+    if (subFilter === 'iterated') {
+      enriched = enriched.filter(f => f.is_iterated)
+    } else if (subFilter === 'backtest_only') {
+      enriched = enriched.filter(f => f.backtested && !f.is_iterated)
     }
 
     const total = enriched.length

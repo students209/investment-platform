@@ -88,26 +88,27 @@ export default function MarkdownRenderer({ content, className = '' }: MarkdownRe
         {children}
       </td>
     ),
-    code: ({ children, className: codeClassName }) => {
-      const isInline = !codeClassName
-      if (isInline) {
-        return (
-          <code className="bg-gray-100 text-emerald-700 px-1.5 py-0.5 rounded text-sm font-mono">
-            {children}
-          </code>
-        )
-      }
-      return (
-        <code className={`${codeClassName || ''} block`}>
+    code(props) {
+      const {children, className, node, ...rest} = props
+      const match = /language-(\w+)/.exec(className || '')
+      return match ? (
+        <code className={`${className} block`} {...rest}>
+          {children}
+        </code>
+      ) : (
+        <code className="bg-gray-100 text-emerald-700 px-1.5 py-0.5 rounded text-sm font-mono" {...rest}>
           {children}
         </code>
       )
     },
-    pre: ({ children }) => (
-      <pre className="bg-slate-900 text-slate-100 rounded-lg p-4 my-4 overflow-x-auto text-sm leading-6 shadow-inner">
-        {children}
-      </pre>
-    ),
+    pre(props) {
+      const {children, node, ...rest} = props
+      return (
+        <pre className="bg-slate-900 text-slate-100 rounded-lg p-4 my-4 overflow-x-auto text-sm leading-6 shadow-inner" {...rest}>
+          {children}
+        </pre>
+      )
+    },
     hr: () => (
       <hr className="my-8 border-t-2 border-gray-100" />
     ),

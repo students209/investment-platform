@@ -30,7 +30,7 @@ function generateTaskId(): string {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { factors, startDate, endDate, groupNum, benchmark, neutralize } = body
+    const { factors, startDate, endDate, groupNum, benchmark, neutralize, model = 'gemini-2.5-flash' } = body
 
     if (!factors || !Array.isArray(factors) || factors.length === 0) {
       return NextResponse.json({ success: false, error: '请选择至少一个因子' })
@@ -67,12 +67,11 @@ export async function POST(request: NextRequest) {
     })
 
     pyProcess.stdout.on('data', (data) => {
-      const txt = data.toString()
+      const txt = data.toString().replace(/\r/g, '\n')
       tasks[taskId].logs.push(txt)
     })
-
     pyProcess.stderr.on('data', (data) => {
-      const txt = data.toString()
+      const txt = data.toString().replace(/\r/g, '\n')
       tasks[taskId].logs.push(txt)
     })
 
@@ -87,14 +86,20 @@ export async function POST(request: NextRequest) {
       console.log(`[Backtest] Task ${taskId} main backtest completed. Starting enhancement...`)
       tasks[taskId].logs.push("\n>>> 正在进行 AI 深度诊断与报告增强...\n")
 
-      const enhanceArgs = ['enhance_report.py', '--factors', ...safeFactors]
+      const geminiKey = process.env.GEMINI_API_KEY || ''
+      const enhanceArgs = [
+        'enhance_report.py', 
+        '--factors', ...safeFactors, 
+        '--model', model,
+        ...(geminiKey ? ['--api_key', geminiKey] : [])
+      ]
       const enhanceProcess = spawn('python3', enhanceArgs, {
         cwd: BACKTEST_DIR,
         env: { ...process.env, PYTHONPATH: `${ALPHA_PY_DIR}:${process.env.PYTHONPATH || ''}` },
       })
 
-      enhanceProcess.stdout.on('data', (data) => tasks[taskId].logs.push(data.toString()))
-      enhanceProcess.stderr.on('data', (data) => tasks[taskId].logs.push(data.toString()))
+      enhanceProcess.stdout.on('data', (data) => tasks[taskId].logs.push(data.toString().replace(/\r/g, '\n')))
+      enhanceProcess.stderr.on('data', (data) => tasks[taskId].logs.push(data.toString().replace(/\r/g, '\n')))
 
       enhanceProcess.on('close', (enhanceCode) => {
         console.log(`[Backtest] Task ${taskId} enhancement completed (code ${enhanceCode})`)

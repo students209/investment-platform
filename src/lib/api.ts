@@ -108,12 +108,14 @@ const LOCAL_API = process.env.NEXT_PUBLIC_NEXT_API_URL || '';
 
 export async function getFactorsIndex(params?: {
   filter?: 'backtested' | 'untested';
+  subFilter?: 'all' | 'backtest_only' | 'iterated';
   search?: string;
   page?: number;
   pageSize?: number;
 }) {
   const sp = new URLSearchParams();
   if (params?.filter) sp.set('filter', params.filter);
+  if (params?.subFilter) sp.set('subFilter', params.subFilter);
   if (params?.search) sp.set('search', params.search);
   if (params?.page) sp.set('page', String(params.page));
   if (params?.pageSize) sp.set('pageSize', String(params.pageSize));
@@ -129,6 +131,7 @@ export async function startBacktest(
     groupNum?: number
     benchmark?: string
     neutralize?: boolean
+    model?: string
   }
 ) {
   const res = await fetch(`${LOCAL_API}/api/factors/backtest`, {
@@ -149,17 +152,22 @@ export async function getBacktestReport(factor: string) {
   return res.text();
 }
 
-export async function startIteration(factors: string[], rounds = 1) {
+export async function startIteration(factors: string[], rounds = 1, params: any = {}, model?: string, customPrompt?: string) {
   const res = await fetch(`${LOCAL_API}/api/factors/iterate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ factors, rounds }),
+    body: JSON.stringify({ factors, rounds, params, model, customPrompt }),
   });
   return res.json();
 }
 
 export async function getIterationStatus(taskId: string) {
   const res = await fetch(`${LOCAL_API}/api/factors/iterate?taskId=${taskId}`);
+  return res.json();
+}
+
+export async function getIterationTracking() {
+  const res = await fetch(`${LOCAL_API}/api/factors/iterate`);
   return res.json();
 }
 
@@ -181,5 +189,78 @@ export async function calculatePortfolioRisk(holdings: Array<{
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(holdings),
   });
+  return res.json();
+}
+
+// ============ 策略回测 API (本地 Next.js) ============
+
+export async function startStrategyBacktest(params: {
+  factorName: string;
+  startDate?: string;
+  endDate?: string;
+  holdCount?: number;
+  rebalanceDays?: number;
+  model?: string;
+}) {
+  const res = await fetch(`${LOCAL_API}/api/strategy/backtest`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+  return res.json();
+}
+
+export async function getStrategyBacktestStatus(taskId: string) {
+  const res = await fetch(`${LOCAL_API}/api/strategy/backtest?taskId=${taskId}`);
+  return res.json();
+}
+
+export async function getStrategyList() {
+  const res = await fetch(`${LOCAL_API}/api/strategy/backtest?list=true`, { cache: 'no-store' });
+  return res.json();
+}
+
+export async function getStrategyReport(factorName: string) {
+  const res = await fetch(`${LOCAL_API}/api/strategy/backtest?report=${encodeURIComponent(factorName)}`);
+  return res.text();
+}
+
+export async function getStrategyTrades(factorName: string) {
+  const res = await fetch(`${LOCAL_API}/api/strategy/backtest?trades=${encodeURIComponent(factorName)}`);
+  return res.json();
+}
+
+export async function generateStrategy(params: {
+  strategyName: string;
+  strategyDescription: string;
+  model?: string;
+}) {
+  const res = await fetch(`${LOCAL_API}/api/strategy/generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+  return res.json();
+}
+
+export async function startStrategyIteration(baseFactorName: string, rounds = 1, params: any = {}, model?: string, customPrompt?: string) {
+  const res = await fetch(`${LOCAL_API}/api/strategy/iterate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ baseFactorName, rounds, ...params, model, customPrompt }),
+  });
+  return res.json();
+}
+
+export async function getStrategyIterationStatus(taskId: string) {
+  const res = await fetch(`${LOCAL_API}/api/strategy/iterate?taskId=${taskId}`);
+  return res.json();
+}
+
+export async function getStrategyLineage(rootFactor?: string) {
+  const url = rootFactor
+    ? `${LOCAL_API}/api/strategy/iterate?root=${encodeURIComponent(rootFactor)}`
+    : `${LOCAL_API}/api/strategy/iterate?lineage=true`;
+  const res = await fetch(url, { cache: 'no-store' });
   return res.json();
 }

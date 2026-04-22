@@ -33,22 +33,38 @@ export default async function IndustriesPage() {
               href={`/research/industries/${report.slug}`}
               className="bg-white rounded-lg shadow hover:shadow-lg transition-shadow p-6"
             >
-              <div className="flex items-start justify-between mb-3">
-                <span className="text-sm text-gray-500">{report.date}</span>
-                {report.tags?.[0] && (
-                  <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded">
-                    {report.tags[0]}
-                  </span>
-                )}
+              <div className="flex items-center justify-between mb-3 pb-2 border-b border-gray-100">
+                <span className="text-sm font-medium text-gray-500">
+                  {report.date} {report.weekday ? `(${report.weekday})` : ''}
+                </span>
               </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2 line-clamp-2">
+              <h3 className="text-lg font-bold text-gray-900 mb-3 line-clamp-2 leading-snug">
                 {report.title}
               </h3>
-              {(report.excerpt || report.summary) && (
-                <p className="text-gray-600 text-sm line-clamp-4 whitespace-pre-line">
-                  {report.excerpt || report.summary}
-                </p>
+
+              {((report.cover_tags?.length ?? 0) > 0 || (report.tags?.length ?? 0) > 0) && (
+                <div className="flex flex-wrap gap-1.5 mb-3">
+                  {Array.from(new Set([...(report.cover_tags || []), ...(report.tags || [])])).map((tag: string) => (
+                    <span key={tag} className="px-2.5 py-1 bg-gray-50 text-gray-600 text-xs rounded-md border border-gray-200">
+                      #{tag}
+                    </span>
+                  ))}
+                </div>
               )}
+
+              <div className="flex-1 mt-1">
+                {report.summary ? (
+                  <div className="bg-gray-50/80 p-3 rounded-lg border border-gray-100">
+                    <p className="text-gray-600 text-sm line-clamp-4 leading-relaxed">
+                      {report.summary}
+                    </p>
+                  </div>
+                ) : report.excerpt && (
+                  <p className="text-gray-600 text-sm line-clamp-4 leading-relaxed">
+                    {report.excerpt}
+                  </p>
+                )}
+              </div>
               <div className="mt-4 text-emerald-600 text-sm font-medium">
                 阅读全文 →
               </div>

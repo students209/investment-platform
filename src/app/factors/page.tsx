@@ -3,6 +3,8 @@
 import { Suspense, useState, useEffect, useRef, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { getFactorsIndex, startBacktest, getBacktestStatus, getBacktestReport, startIteration, getIterationStatus } from '@/lib/api'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 
 type Factor = {
   name: string
@@ -19,8 +21,14 @@ function FactorsContent() {
   // Read URL query params for prefill
   const urlTab = searchParams.get('tab') as 'backtest' | 'iterate' | null
   const urlFactor = searchParams.get('factor')
+  const urlCustomPrompt = searchParams.get('customPrompt')
 
-  const [activeTab, setActiveTab] = useState<'backtest' | 'iterate'>(urlTab || 'backtest')
+  const [activeTab, setActiveTab] = useState<'backtest' | 'iterate'>(() => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem('factor_lab_tab') as any) || urlTab || 'backtest'
+    }
+    return urlTab || 'backtest'
+  })
 
   // ---- Backtest Tab State ----
   const [searchTerm, setSearchTerm] = useState('')
@@ -55,13 +63,66 @@ function FactorsContent() {
   const [iterElapsed, setIterElapsed] = useState(0)
   const [iterResults, setIterResults] = useState<any>(null)
   const [iterRunning, setIterRunning] = useState(false)
+  const [iterLogs, setIterLogs] = useState<string[]>([])
   const [iterCandidates, setIterCandidates] = useState<Factor[]>([])
   const [iterSearch, setIterSearch] = useState('')
   const [showIterDropdown, setShowIterDropdown] = useState(false)
+  const [showBoardModal, setShowBoardModal] = useState(false)
+  const [selectedModel, setSelectedModel] = useState('gemini-3.1-flash-lite-preview')
+
+  const MODELS = [
+    { id: 'gemini-3.1-flash-lite-preview', name: 'Gemini 3.1 Flash Lite' },
+    { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
+    { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash' },
+    { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro' },
+    { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash' },
+  ]
 
   const pollRef = useRef<NodeJS.Timeout | null>(null)
   const iterPollRef = useRef<NodeJS.Timeout | null>(null)
   const prefilled = useRef(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+  const iterDropdownRef = useRef<HTMLDivElement>(null)
+
+  // Persist active tab
+  useEffect(() => {
+    localStorage.setItem('factor_lab_tab', activeTab)
+  }, [activeTab])
+
+  // Click outside to close factor lists
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowDropdown(false)
+      }
+      if (iterDropdownRef.current && !iterDropdownRef.current.contains(event.target as Node)) {
+        setShowIterDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  // Restore task IDs on mount
+  useEffect(() => {
+    const savedBacktestId = localStorage.getItem('backtest_task_id')
+    const savedIterId = localStorage.getItem('iter_task_id')
+    if (savedBacktestId && !backtestTaskId) {
+      setBacktestTaskId(savedBacktestId)
+      setBacktestRunning(true)
+    }
+    if (savedIterId && !iterTaskId) {
+      setIterTaskId(savedIterId)
+      setIterRunning(true)
+    }
+  }, [])
+
+  // Force activeTab to sync with URL parameter if present
+  useEffect(() => {
+    if (urlTab === 'backtest' || urlTab === 'iterate') {
+      setActiveTab(urlTab)
+    }
+  }, [urlTab])
 
   // ---- Prefill from URL query params ----
   useEffect(() => {
@@ -126,11 +187,47 @@ function FactorsContent() {
     )
   }
 
-  // ---- Start Backtest ----
+  // Backtest Polling Effect
+  useEffect(() => {
+    if (!backtestTaskId) {
+      localStorage.removeItem('backtest_task_id')
+      return
+    }
+    localStorage.setItem('backtest_task_id', backtestTaskId)
+    
+    const poll = async () => {
+      try {
+        const res = await getBacktestStatus(backtestTaskId)
+        if (res.success) {
+          if (res.data.logs) setBacktestLogs(res.data.logs)
+          setBacktestElapsed(res.data.elapsed)
+          
+          if (res.data.status === 'done') {
+            setBacktestRunning(false)
+            setBacktestTaskId('')
+            setBacktestStatus('回测完成 ✅')
+            if (res.data.results) setBacktestResults(res.data.results)
+          } else if (res.data.status === 'error') {
+            setBacktestRunning(false)
+            setBacktestTaskId('')
+            setBacktestStatus(`失败: ${res.data.error}`)
+          } else {
+            setBacktestStatus(`回测运行中... (${res.data.elapsed}s)`)
+          }
+        }
+      } catch (e) {
+        console.error('Polling error:', e)
+      }
+    }
+
+    const interval = setInterval(poll, 2000)
+    poll()
+    return () => clearInterval(interval)
+  }, [backtestTaskId])
+
   async function handleStartBacktest() {
     if (selectedFactors.length === 0) return
     setBacktestRunning(true)
-    setBacktestStatus('正在启动回测...')
     setBacktestResults({})
     setBacktestLogs([])
     setActiveReport('')
@@ -142,45 +239,19 @@ function FactorsContent() {
         endDate,
         groupNum,
         benchmark,
-        neutralize
+        neutralize,
+        model: selectedModel
       })
-      if (!res.success) {
-        setBacktestStatus(`错误: ${res.error}`)
+      if (res.success && res.data?.taskId) {
+        setBacktestTaskId(res.data.taskId)
+      } else {
+        setBacktestStatus(`启动错误: ${res.error || 'Unknown'}`)
         setBacktestRunning(false)
-        return
       }
-      setBacktestTaskId(res.data.taskId)
-      setBacktestStatus('回测运行中...')
-      startPolling(res.data.taskId)
     } catch (e) {
-      setBacktestStatus('启动回测失败')
+      setBacktestStatus('网络请求失败')
       setBacktestRunning(false)
     }
-  }
-
-  function startPolling(taskId: string) {
-    if (pollRef.current) clearInterval(pollRef.current)
-    pollRef.current = setInterval(async () => {
-      try {
-        const res = await getBacktestStatus(taskId)
-        if (!res.success) return
-        setBacktestElapsed(res.data.elapsed)
-        setBacktestLogs(res.data.logs || [])
-        
-        if (res.data.status === 'done') {
-          clearInterval(pollRef.current!)
-          setBacktestStatus('回测完成 ✅')
-          setBacktestResults(res.data.results)
-          setBacktestRunning(false)
-        } else if (res.data.status === 'error') {
-          clearInterval(pollRef.current!)
-          setBacktestStatus(`回测出错: ${res.data.error?.slice(0, 200)}`)
-          setBacktestRunning(false)
-        } else {
-          setBacktestStatus(`回测运行中... (${res.data.elapsed}s)`)
-        }
-      } catch (e) { /* keep polling */ }
-    }, 3000)
   }
 
   // ---- Load Report ----
@@ -196,60 +267,73 @@ function FactorsContent() {
     setLoadingReport(false)
   }
 
-  // ---- Start Iteration ----
-  async function handleStartIteration() {
+  // Iteration Polling Effect
+  useEffect(() => {
+    if (!iterTaskId) {
+      localStorage.removeItem('iter_task_id')
+      return
+    }
+    localStorage.setItem('iter_task_id', iterTaskId)
+
+    const poll = async () => {
+      try {
+        const res = await getIterationStatus(iterTaskId)
+        if (res.success) {
+          if (res.data.logs) setIterLogs(res.data.logs)
+          setIterElapsed(res.data.elapsed)
+          
+          if (res.data.status === 'done') {
+            setIterRunning(false)
+            setIterTaskId('')
+            setIterStatus('因子迭代技能执行完成 ✅')
+            if (res.data.results) {
+              setIterResults(res.data.results)
+            }
+          } else if (res.data.status === 'error') {
+            setIterRunning(false)
+            setIterTaskId('')
+            setIterStatus(`迭代失败: ${res.data.error}`)
+          } else {
+            setIterStatus(`因子迭代技能运行中... (${res.data.elapsed}s)`)
+          }
+        }
+      } catch (e) {
+        console.error('Iter polling error:', e)
+      }
+    }
+
+    const interval = setInterval(poll, 2000)
+    poll()
+    return () => clearInterval(interval)
+  }, [iterTaskId])
+
+  async function handleStartIteration(customPrompt?: string) {
     const name = iterFactorName.trim()
     if (!name) return
     setIterRunning(true)
-    setIterStatus('正在启动迭代...')
     setIterResults(null)
+    setIterLogs([])
+    setIterStatus('启动因子迭代技能...')
 
     try {
-      const res = await startIteration([name], iterRounds)
-      if (!res.success) {
-        setIterStatus(`错误: ${res.error}`)
+      const res = await startIteration([name], iterRounds, {
+        startDate,
+        endDate,
+        groupNum,
+        benchmark,
+        neutralize
+      }, selectedModel, customPrompt)
+      if (res.success && res.data?.taskId) {
+        setIterTaskId(res.data.taskId)
+      } else {
+        setIterStatus(`启动错误: ${res.error || 'Unknown'}`)
         setIterRunning(false)
-        return
       }
-      setIterTaskId(res.data.taskId)
-      setIterStatus('迭代运行中...')
-      startIterPolling(res.data.taskId)
     } catch (e) {
-      setIterStatus('启动迭代失败')
+      setIterStatus('网络请求失败')
       setIterRunning(false)
     }
   }
-
-  function startIterPolling(taskId: string) {
-    if (iterPollRef.current) clearInterval(iterPollRef.current)
-    iterPollRef.current = setInterval(async () => {
-      try {
-        const res = await getIterationStatus(taskId)
-        if (!res.success) return
-        setIterElapsed(res.data.elapsed)
-        if (res.data.status === 'done') {
-          clearInterval(iterPollRef.current!)
-          setIterStatus('迭代完成 ✅')
-          setIterResults(res.data.results)
-          setIterRunning(false)
-        } else if (res.data.status === 'error') {
-          clearInterval(iterPollRef.current!)
-          setIterStatus(`迭代出错: ${res.data.error?.slice(0, 200)}`)
-          setIterRunning(false)
-        } else {
-          setIterStatus(`迭代运行中... (${res.data.elapsed}s)`)
-        }
-      } catch (e) { /* keep polling */ }
-    }, 3000)
-  }
-
-  // Cleanup intervals
-  useEffect(() => {
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current)
-      if (iterPollRef.current) clearInterval(iterPollRef.current)
-    }
-  }, [])
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -287,7 +371,7 @@ function FactorsContent() {
             <h2 className="text-lg font-bold mb-4">选择因子</h2>
 
             {/* Search Input */}
-            <div className="relative">
+            <div className="relative" ref={dropdownRef}>
               <input
                 type="text"
                 value={searchTerm}
@@ -401,6 +485,21 @@ function FactorsContent() {
                   <option value="中证1000">中证1000</option>
                 </select>
               </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">AI 模型 (报告增强)</label>
+                <input
+                  list="model-list"
+                  value={selectedModel}
+                  onChange={(e) => setSelectedModel(e.target.value)}
+                  placeholder="选择或输入模型名称..."
+                  className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+                <datalist id="model-list">
+                  {MODELS.map(m => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
+                  ))}
+                </datalist>
+              </div>
             </div>
             <div className="flex items-center mt-4 space-x-6">
               <label className="flex items-center space-x-2 cursor-pointer">
@@ -425,14 +524,24 @@ function FactorsContent() {
           </button>
 
           {/* Progress & Logs */}
-          {backtestRunning && (
+          {(backtestRunning || backtestLogs.length > 0) && (
             <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden flex flex-col">
-              <div className="flex items-center space-x-3 px-4 py-3 bg-gray-800 border-b border-gray-700">
-                <div className="animate-spin w-4 h-4 border-2 border-emerald-500 border-t-transparent rounded-full" />
-                <div>
-                  <div className="font-medium text-emerald-400 text-sm">{backtestStatus}</div>
-                  <div className="text-xs text-gray-400">已运行 {backtestElapsed} 秒 · 因子回测可能需要数分钟</div>
+              <div className="flex items-center justify-between px-4 py-3 bg-gray-800 border-b border-gray-700">
+                <div className="flex items-center space-x-3">
+                  <div className={`w-4 h-4 rounded-full ${backtestRunning ? 'border-2 border-emerald-500 border-t-transparent animate-spin' : 'bg-emerald-500'}`} />
+                  <div>
+                    <div className="font-medium text-emerald-400 text-sm">{backtestStatus}</div>
+                    <div className="text-xs text-gray-400">已运行 {backtestElapsed} 秒 · 因子回测可能需要数分钟</div>
+                  </div>
                 </div>
+                {!backtestRunning && selectedFactors.length === 1 && (
+                  <button
+                    onClick={() => loadReport(selectedFactors[0])}
+                    className="px-3 py-1 bg-emerald-600 text-white text-xs font-bold rounded hover:bg-emerald-700 transition-colors"
+                  >
+                    📊 查看回测报告
+                  </button>
+                )}
               </div>
               <div className="p-4 overflow-y-auto max-h-96 min-h-[16rem] bg-black">
                 <pre className="text-left text-xs text-green-400 font-mono whitespace-pre-wrap break-all">
@@ -491,16 +600,18 @@ function FactorsContent() {
       {activeTab === 'iterate' && (
         <div className="space-y-6">
           <div className="bg-white rounded-xl shadow-sm border p-6">
-            <h2 className="text-lg font-bold mb-4">选择因子进行迭代</h2>
+            <h2 className="text-lg font-bold mb-2">选择因子进行 AI 进化迭代</h2>
+            <p className="text-sm text-gray-500 mb-4">基于 Gemini AI 读取回测报告，自动生成多个改进版因子表达式，写入代码库并运行快速回测对比</p>
 
             {/* Search or manual input */}
-            <div className="relative">
+            <div className="relative" ref={iterDropdownRef}>
               <input
                 type="text"
-                value={iterSearch || iterFactorName}
+                value={iterSearch}
                 onChange={(e) => {
                   setIterSearch(e.target.value)
                   setIterFactorName(e.target.value)
+                  setShowIterDropdown(true)
                 }}
                 onFocus={() => iterCandidates.length > 0 && setShowIterDropdown(true)}
                 placeholder="输入因子名称或从列表中选择..."
@@ -527,6 +638,40 @@ function FactorsContent() {
               )}
             </div>
 
+            {/* Model selector for iteration */}
+            <div className="mt-4 flex flex-col space-y-2">
+              <label className="text-sm font-medium text-gray-700">AI 进化模型：</label>
+              <div className="flex flex-col space-y-2">
+                <div className="flex flex-wrap gap-2">
+                  {MODELS.map(m => (
+                    <button
+                      key={m.id}
+                      onClick={() => setSelectedModel(m.id)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${
+                        selectedModel === m.id
+                          ? 'bg-emerald-50 border-emerald-500 text-emerald-700'
+                          : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
+                      }`}
+                    >
+                      {m.name}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  list="model-list-iter"
+                  value={selectedModel}
+                  onChange={(e) => setSelectedModel(e.target.value)}
+                  placeholder="或手动输入模型名称..."
+                  className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+                <datalist id="model-list-iter">
+                  {MODELS.map(m => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
+                  ))}
+                </datalist>
+              </div>
+            </div>
+
             {/* Rounds selector */}
             <div className="mt-4 flex items-center space-x-4">
               <label className="text-sm font-medium text-gray-700">迭代轮数：</label>
@@ -549,23 +694,28 @@ function FactorsContent() {
 
             {/* Start button */}
             <button
-              onClick={handleStartIteration}
+              onClick={() => handleStartIteration(urlCustomPrompt || undefined)}
               disabled={iterRunning || !iterFactorName.trim()}
               className="mt-6 w-full py-3 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium transition-colors"
             >
-              {iterRunning ? `⏳ ${iterStatus}` : '开始迭代'}
+              {iterRunning ? `⏳ ${iterStatus}` : `🧬 开始 AI 进化迭代 (${iterRounds} 轮)`}
             </button>
           </div>
 
-          {/* Progress */}
-          {iterRunning && (
-            <div className="bg-violet-50 border border-violet-200 rounded-xl p-4">
-              <div className="flex items-center space-x-3">
-                <div className="animate-spin w-5 h-5 border-2 border-violet-500 border-t-transparent rounded-full" />
+          {/* Iteration Progress & Logs */}
+          {(iterRunning || iterLogs.length > 0) && (
+            <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden flex flex-col">
+              <div className="flex items-center space-x-3 px-4 py-3 bg-gray-800 border-b border-gray-700">
+                <div className={`w-4 h-4 rounded-full ${iterRunning ? 'border-2 border-violet-500 border-t-transparent animate-spin' : 'bg-violet-500'}`} />
                 <div>
-                  <div className="font-medium text-violet-800">{iterStatus}</div>
-                  <div className="text-sm text-violet-600">已运行 {iterElapsed} 秒</div>
+                  <div className="font-medium text-violet-400 text-sm">{iterStatus}</div>
+                  <div className="text-xs text-gray-400">已运行 {iterElapsed} 秒 · 因子迭代与快速回测中</div>
                 </div>
+              </div>
+              <div className="p-4 overflow-y-auto max-h-96 min-h-[16rem] bg-black">
+                <pre className="text-left text-xs text-violet-400 font-mono whitespace-pre-wrap break-all">
+                  {iterLogs.length === 0 ? '正在初始化执行引擎...' : iterLogs.join('')}
+                </pre>
               </div>
             </div>
           )}
@@ -573,7 +723,17 @@ function FactorsContent() {
           {/* Iteration Results */}
           {iterResults && (
             <div className="bg-white rounded-xl shadow-sm border p-6 space-y-4">
-              <h3 className="font-bold text-lg">迭代结果</h3>
+              <div className="flex justify-between items-center">
+                <h3 className="font-bold text-lg">迭代结果</h3>
+                {iterResults.boardHtml && (
+                  <button
+                    onClick={() => setShowBoardModal(true)}
+                    className="px-4 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 text-sm font-medium transition-colors flex items-center space-x-2"
+                  >
+                    <span>🌳</span> <span>查看进化族谱看板</span>
+                  </button>
+                )}
+              </div>
 
               {/* Metrics Table */}
               {iterResults.metrics && typeof iterResults.metrics === 'object' && (
@@ -615,15 +775,90 @@ function FactorsContent() {
                 </div>
               )}
 
-              {/* Tracking markdown */}
-              {iterResults.tracking && (
-                <div className="mt-4">
-                  <h4 className="font-medium text-gray-700 mb-2">历史迭代追踪表</h4>
-                  <pre className="bg-gray-50 p-4 rounded-lg text-xs overflow-x-auto whitespace-pre-wrap">
-                    {iterResults.tracking}
-                  </pre>
-                </div>
-              )}
+              {/* Tracking table */}
+              {iterResults.tracking && (() => {
+                // Parse markdown table into structured data
+                const lines = iterResults.tracking.split('\n').filter((l: string) => l.trim().startsWith('|') && !l.trim().startsWith('| :---'))
+                if (lines.length < 2) return null
+                const parseRow = (line: string) => line.split('|').slice(1, -1).map((c: string) => c.trim())
+                const headers = parseRow(lines[0])
+                const rows = lines.slice(1).map(parseRow)
+                
+                return (
+                  <div className="mt-6">
+                    <h4 className="font-medium text-gray-700 mb-2">历史迭代追踪表</h4>
+                    <div className="bg-white border rounded-xl overflow-hidden shadow-sm">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs" style={{ minWidth: '1400px', tableLayout: 'fixed' }}>
+                          <colgroup>
+                            <col style={{ width: '100px' }} /> {/* 时间 */}
+                            <col style={{ width: '160px' }} /> {/* 原始因子 */}
+                            <col style={{ width: '180px' }} /> {/* 迭代因子 */}
+                            <col style={{ width: '180px' }} /> {/* 改进原理 */}
+                            <col style={{ width: '120px' }} /> {/* IC均值对比 */}
+                            <col style={{ width: '100px' }} /> {/* IC_T值对比 */}
+                            <col style={{ width: '110px' }} /> {/* 多空年化对比 */}
+                            <col style={{ width: '110px' }} /> {/* 多空夏普对比 */}
+                            <col style={{ width: '120px' }} /> {/* 最大回撤对比 */}
+                            <col style={{ width: '100px' }} /> {/* 胜率对比 */}
+                            <col style={{ width: '110px' }} /> {/* 多空换手率对比 */}
+                            <col style={{ width: '90px' }} />  {/* 改进效果综合定性 */}
+                          </colgroup>
+                          <thead>
+                            <tr className="bg-gray-50">
+                              {headers.map((h: string, i: number) => (
+                                <th key={i} className="px-2 py-2.5 text-left font-semibold text-gray-700 border-b text-[11px] overflow-hidden text-ellipsis">
+                                  {h}
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {rows.map((row: string[], ri: number) => (
+                              <tr key={ri} className="hover:bg-gray-50/60 border-b last:border-b-0">
+                                {row.map((cell: string, ci: number) => {
+                                  const isReason = ci === 3
+                                  const isFactorName = ci === 1 || ci === 2
+                                  const isQualitative = ci === headers.length - 1
+                                  return (
+                                    <td
+                                      key={ci}
+                                      className={`px-2 py-2.5 border-b overflow-hidden text-ellipsis ${isReason ? 'bg-amber-50/30' : ''}`}
+                                      title={cell}
+                                    >
+                                      {isReason ? (
+                                        <div className="flex items-start gap-1.5 min-w-[200px]">
+                                          <span className="mt-0.5 flex-shrink-0 text-amber-500">💡</span>
+                                          <span className="text-[11px] text-gray-700 leading-relaxed italic">{cell}</span>
+                                        </div>
+                                      ) : isFactorName ? (
+                                        <div className="flex items-center gap-1.5">
+                                          {ci === 2 && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>}
+                                          <span className={`block truncate text-[11px] font-mono ${ci === 2 ? 'font-bold text-emerald-700' : 'text-gray-500'}`}>{cell}</span>
+                                        </div>
+                                      ) : isQualitative ? (
+                                        <span className={`inline-block px-1.5 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap ${
+                                          cell.includes('显著') || cell.includes('高度成功') ? 'bg-green-100 text-green-700' :
+                                          cell.includes('改善') || cell.includes('微小提升') ? 'bg-blue-100 text-blue-700' :
+                                          cell.includes('持平') ? 'bg-yellow-100 text-yellow-700' :
+                                          cell.includes('下降') || cell.includes('恶化') ? 'bg-red-100 text-red-700' :
+                                          'bg-gray-100 text-gray-600'
+                                        }`}>{cell}</span>
+                                      ) : (
+                                        <span className={`block whitespace-nowrap text-[11px] ${ci >= 4 ? 'font-mono text-center' : 'text-gray-600'}`}>{cell}</span>
+                                      )}
+                                    </td>
+                                  )
+                                })}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()}
 
               {/* Continue iteration button */}
               {iterResults.metrics && !iterResults.metrics.raw_output && (
@@ -646,6 +881,30 @@ function FactorsContent() {
                   }
                 </div>
               )}
+            </div>
+          )}
+          {/* Board Modal */}
+          {showBoardModal && (
+            <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl w-full max-w-6xl max-h-[90vh] flex flex-col shadow-2xl">
+                <div className="flex justify-between items-center p-4 border-b">
+                  <h3 className="font-bold text-lg text-gray-900">🧬 因子进化血统看板</h3>
+                  <button
+                    onClick={() => setShowBoardModal(false)}
+                    className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-full transition-colors"
+                  >
+                    <span className="text-xl">✕</span>
+                  </button>
+                </div>
+                <div className="flex-1 overflow-auto bg-gray-50 p-4">
+                  <iframe
+                    srcDoc={iterResults.boardHtml}
+                    className="w-full h-full border-0 rounded-xl bg-white shadow-inner"
+                    style={{ minHeight: '75vh' }}
+                    title="Factor Evolution Board"
+                  />
+                </div>
+              </div>
             </div>
           )}
         </div>

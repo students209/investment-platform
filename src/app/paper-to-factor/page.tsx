@@ -35,7 +35,15 @@ export default function PaperToFactorPage() {
   const [uploadedFileName, setUploadedFileName] = useState('')
   const [fileBase64, setFileBase64] = useState('')
   const [mimeType, setMimeType] = useState('')
-  const [selectedModel, setSelectedModel] = useState('')
+  const [selectedModel, setSelectedModel] = useState('gemini-3.1-flash-lite-preview')
+
+  const MODELS = [
+    { id: 'gemini-3.1-flash-lite-preview', name: 'Gemini 3.1 Flash Lite' },
+    { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
+    { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash' },
+    { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro' },
+    { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash' },
+  ]
 
   async function handleConvert() {
     if (!paperUrl && !paperText && !uploadedFileName) {
@@ -54,7 +62,7 @@ export default function PaperToFactorPage() {
         filename: uploadedFileName || undefined,
         fileBase64: inputMode === 'file' ? fileBase64 : undefined,
         mimeType: inputMode === 'file' ? mimeType : undefined,
-        model: selectedModel || undefined,
+        model: selectedModel || 'gemini-3.1-flash-lite-preview',
       })
 
       if (data.success) {
@@ -194,14 +202,38 @@ export default function PaperToFactorPage() {
 
             {/* Model Selection */}
             <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">使用模型名称 (留空使用默认)</label>
-              <input
-                type="text"
-                value={selectedModel}
-                onChange={(e) => setSelectedModel(e.target.value)}
-                placeholder="例如: gemini-2.5-pro, gemini-2.5-flash..."
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-              />
+              <label className="block text-sm font-medium text-gray-700 mb-2">AI 模型</label>
+              <div className="flex flex-col space-y-2">
+                <div className="flex flex-wrap gap-2">
+                  {MODELS.map(m => (
+                    <button
+                      key={m.id}
+                      onClick={() => setSelectedModel(m.id)}
+                      disabled={loading}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${
+                        selectedModel === m.id
+                          ? 'bg-emerald-50 border-emerald-500 text-emerald-700'
+                          : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
+                      }`}
+                    >
+                      {m.name}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  list="paper-model-list"
+                  value={selectedModel}
+                  onChange={(e) => setSelectedModel(e.target.value)}
+                  placeholder="或手动输入模型名称..."
+                  disabled={loading}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+                <datalist id="paper-model-list">
+                  {MODELS.map(m => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
+                  ))}
+                </datalist>
+              </div>
             </div>
 
             <button

@@ -1,0 +1,1291 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>A股 首席交易员 (SMC & Supertrend 像素级复刻版)</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <style>
+        body {
+            font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            background-color: #f0f2f5;
+            margin: 0;
+            padding: 20px;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1300px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .card {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+        }
+
+        .control-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            align-items: center;
+        }
+
+        .search-row {
+            display: flex;
+            gap: 10px;
+            width: 100%;
+            justify-content: center;
+        }
+
+        input[type="text"] {
+            padding: 10px 15px;
+            width: 300px;
+            border: 1px solid #d9d9d9;
+            border-radius: 6px;
+            outline: none;
+        }
+
+        .btn {
+            padding: 8px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: 0.2s;
+        }
+
+        .btn:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+
+        .btn-primary {
+            background-color: #1890ff;
+            color: white;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .btn-option {
+            padding: 5px 12px;
+            background: #f5f5f5;
+            border: 1px solid #e8e8e8;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            color: #666;
+        }
+
+        .btn-option.active {
+            background: #1890ff;
+            color: white;
+            border-color: #1890ff;
+            font-weight: bold;
+        }
+
+        .label {
+            font-size: 12px;
+            color: #999;
+            margin-right: 5px;
+            font-weight: bold;
+        }
+
+        #chart-container {
+            width: 100%;
+            height: 850px;
+        }
+
+        #status-msg {
+            text-align: center;
+            color: #666;
+            height: 20px;
+            font-size: 13px;
+            margin-top: 5px;
+        }
+
+        .btn-option.active-smc {
+            background: #722ed1 !important;
+            color: white !important;
+        }
+
+        .btn-option.active-st {
+            background: #faad14 !important;
+            color: black !important;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <div class="card control-panel">
+            <div class="search-row">
+                <input type="text" id="stockInput" placeholder="代码/名称 (如: 东方财富)" value="东方财富"
+                    onkeypress="if(event.keyCode==13) startSearch()">
+                <button class="btn btn-primary" id="btnSearch" onclick="startSearch()">查询</button>
+            </div>
+            <div class="btn-group">
+                <span class="label">周期:</span>
+                <button class="btn-option" onclick="switchPeriod(5, this)">5分</button>
+                <button class="btn-option" onclick="switchPeriod(15, this)">15分</button>
+                <button class="btn-option" onclick="switchPeriod(30, this)">30分</button>
+                <button class="btn-option" onclick="switchPeriod(60, this)">60分</button>
+                <button class="btn-option active" onclick="switchPeriod(240, this)">日线</button>
+                <button class="btn-option" onclick="switchPeriod('week', this)">周线</button>
+                <button class="btn-option" onclick="switchPeriod('month', this)">月线</button>
+            </div>
+            <div class="btn-group">
+                <span class="label">副图指标:</span>
+                <button class="btn-option active" onclick="toggleIndicator('VOL', this)">VOL</button>
+                <button class="btn-option active" onclick="toggleIndicator('MACD', this)">MACD</button>
+                <button class="btn-option" onclick="toggleIndicator('RSI', this)">RSI</button>
+                <button class="btn-option" onclick="toggleIndicator('KDJ', this)">KDJ</button>
+                <button class="btn-option" onclick="toggleIndicator('WR', this)">WILLR</button>
+                <button class="btn-option" onclick="toggleIndicator('SQZ', this)">SQZMOM</button>
+                <button class="btn-option" onclick="toggleIndicator('MLRSI', this)">ML RSI</button>
+            </div>
+            <div class="btn-group">
+                <span class="label">高级工具:</span>
+                <button class="btn-option" id="btnZigZag" onclick="toggleZigZag()">🎯 ZigZag 极点</button>
+                <button class="btn-option" id="btnTrend" onclick="toggleTrendLines()">📈 支撑/阻力线</button>
+                <button class="btn-option" id="btnSMC" onclick="toggleSMC(this)">💎 Smart Money (SMC)</button>
+                <button class="btn-option" id="btnST" onclick="toggleST(this)">⚡ Supertrend</button>
+                <button class="btn-option" id="btnLDC" onclick="toggleLDC(this)">🧠 Lorentzian</button>
+            </div>
+            <div id="status-msg"></div>
+        </div>
+        <div class="card">
+            <div id="chart-container"></div>
+        </div>
+    </div>
+
+    <script>
+        var myChart = echarts.init(document.getElementById('chart-container'));
+        var currentSymbol = 'sz300059';
+        var currentName = '东方财富';
+        var currentScale = 240;
+        var isMergeMode = false; var mergeType = '';
+        var selectedIndicators = ['VOL', 'MACD'];
+        var showZigZag = false; var showTrendLines = false;
+        var showSMC = false; var showST = false; var showLDC = false;
+        var globalData = []; var globalIndicators = {}; var globalZigZag = []; var globalTrendInfo = null;
+        var globalSMC = null; var globalST = null; var globalLDC = null; // 缓存计算结果
+
+        // --- 基础计算函数 ---
+        function highest(data, field, len, idx) {
+            let max = -Infinity;
+            let start = Math.max(0, idx - len + 1);
+            for (let i = start; i <= idx; i++) if (data[i][field] > max) max = data[i][field];
+            return max;
+        }
+        function lowest(data, field, len, idx) {
+            let min = Infinity;
+            let start = Math.max(0, idx - len + 1);
+            for (let i = start; i <= idx; i++) if (data[i][field] < min) min = data[i][field];
+            return min;
+        }
+
+        // ================= SMC 核心算法 (完全复刻 LuxAlgo Logic) =================
+        // 包含 Swing Structure, Internal Structure, EQH/EQL, Order Blocks
+
+        function calculateAllSMC(data) {
+            // 1. Swing Structure (Length = 50)
+            let swing = calculateSMCStructure(data, 50, false);
+
+            // 2. Internal Structure (Length = 5)
+            let internal = calculateSMCStructure(data, 5, true);
+
+            // 3. Equal Highs/Lows
+            let eq = calculateEQH_EQL(data);
+
+            return { swing, internal, eq };
+        }
+
+        // 通用结构计算函数 (Core Logic)
+        function calculateSMCStructure(data, length, isInternal) {
+            const atrs = calculateATR(data, 200);
+
+            // State Variables
+            let legState = 0;       // 0 = Bearish, 1 = Bullish
+            let trend = 0;          // 0 = Undefined, 1 = Bullish, -1 = Bearish
+
+            let swingHigh = { currentLevel: NaN, lastLevel: NaN, crossed: false, barIndex: 0, barTime: 0 };
+            let swingLow = { currentLevel: NaN, lastLevel: NaN, crossed: false, barIndex: 0, barTime: 0 };
+
+            let trailing = {
+                top: -Infinity, bottom: Infinity,
+                lastTopTime: 0, lastBottomTime: 0,
+                barTime: 0, barIndex: 0
+            };
+
+            let structure = [];
+            let obs = [];
+
+            for (let i = 0; i < data.length; i++) {
+                let high = data[i].high;
+                let low = data[i].low;
+                let close = data[i].close;
+                let timeStr = data[i].day;
+
+                // --- Trailing Extremes Update ---
+                if (high >= trailing.top) {
+                    trailing.top = high;
+                    if (high === trailing.top) trailing.lastTopTime = timeStr;
+                }
+                if (low <= trailing.bottom) {
+                    trailing.bottom = low;
+                    if (low === trailing.bottom) trailing.lastBottomTime = timeStr;
+                }
+
+                // --- Pivot Detection ---
+                if (i >= length) {
+                    let candidateIndex = i - length;
+                    let candidateHigh = data[candidateIndex].high;
+                    let candidateLow = data[candidateIndex].low;
+
+                    let isHighestRight = true;
+                    let isLowestRight = true;
+
+                    for (let k = 1; k <= length; k++) {
+                        if (data[candidateIndex + k].high >= candidateHigh) isHighestRight = false;
+                        if (data[candidateIndex + k].low <= candidateLow) isLowestRight = false;
+                    }
+
+                    let newLeg = legState;
+                    if (isHighestRight) newLeg = 0;
+                    if (isLowestRight) newLeg = 1;
+
+                    let isNewLeg = (newLeg !== legState);
+                    let isBullishLegStart = (newLeg === 1 && legState === 0);
+                    let isBearishLegStart = (newLeg === 0 && legState === 1);
+
+                    legState = newLeg;
+
+                    if (isNewLeg) {
+                        if (isBullishLegStart) {
+                            let p_ivot = swingLow;
+                            p_ivot.lastLevel = p_ivot.currentLevel;
+                            p_ivot.currentLevel = candidateLow;
+                            p_ivot.crossed = false;
+                            p_ivot.barIndex = candidateIndex;
+                            p_ivot.barTime = data[candidateIndex].day;
+
+                            // 只在非Internal模式下重置Trailing (或者都重置，视需求，这里跟随Pine Logic)
+                            // LuxAlgo中Internal和Swing共享Trailing吗？不，它们是独立的实例。
+                            trailing.bottom = p_ivot.currentLevel;
+                            trailing.barTime = p_ivot.barTime;
+                            trailing.barIndex = p_ivot.barIndex;
+                            trailing.lastBottomTime = p_ivot.barTime;
+
+                        } else if (isBearishLegStart) {
+                            let p_ivot = swingHigh;
+                            p_ivot.lastLevel = p_ivot.currentLevel;
+                            p_ivot.currentLevel = candidateHigh;
+                            p_ivot.crossed = false;
+                            p_ivot.barIndex = candidateIndex;
+                            p_ivot.barTime = data[candidateIndex].day;
+
+                            trailing.top = p_ivot.currentLevel;
+                            trailing.barTime = p_ivot.barTime;
+                            trailing.barIndex = p_ivot.barIndex;
+                            trailing.lastTopTime = p_ivot.barTime;
+                        }
+                    }
+                }
+
+                // --- Structure Break (BOS/CHoCH) ---
+                // Bullish break
+                if (!isNaN(swingHigh.currentLevel) && !swingHigh.crossed) {
+                    if (close > swingHigh.currentLevel) {
+                        let type = (trend === -1) ? 'CHoCH' : 'BOS';
+                        swingHigh.crossed = true;
+                        trend = 1;
+
+                        structure.push({
+                            start: swingHigh.barIndex, end: i, price: swingHigh.currentLevel,
+                            label: type, color: '#089981', isInternal: isInternal
+                        });
+
+                        // Create OB
+                        createOrderBlock(obs, data, swingHigh.barIndex, i, 'bull', atrs, isInternal);
+                    }
+                }
+
+                // Bearish break
+                if (!isNaN(swingLow.currentLevel) && !swingLow.crossed) {
+                    if (close < swingLow.currentLevel) {
+                        let type = (trend === 1) ? 'CHoCH' : 'BOS';
+                        swingLow.crossed = true;
+                        trend = -1;
+
+                        structure.push({
+                            start: swingLow.barIndex, end: i, price: swingLow.currentLevel,
+                            label: type, color: '#f23645', isInternal: isInternal
+                        });
+
+                        createOrderBlock(obs, data, swingLow.barIndex, i, 'bear', atrs, isInternal);
+                    }
+                }
+
+                // --- OB Mitigation ---
+                for (let ob of obs) {
+                    if (!ob.mitigated && i > ob.idx) {
+                        // Standard Mitigation: Price *wicks* into the block.
+                        // For display distinctness, maybe we only mitigate if it closes beyond?
+                        // No, standard is wick.
+                        // Check if the Top Block is being mitigated by a tiny wick?
+                        // User says "Missing Top Red Block". If it was created, it must have been mitigated.
+                        // Let's relax mitigation: Only mitigate if Close crosses? Or 50% penetration?
+                        // Pine Script default is usually: high >= ob.bottom (for Bearish).
+                        // Let's stick to standard but verify creation.
+
+                        // Changed to Close-based mitigation: blocks survive wicks, only break when Close penetrates
+                        if (ob.type === 'bull' && close < ob.bottom) {
+                            ob.mitigated = true;
+                            ob.end = i;
+                        }
+                        if (ob.type === 'bear' && close > ob.top) {
+                            ob.mitigated = true;
+                            ob.end = i;
+                        }
+                    }
+                }
+            }
+
+            return { structure, obs, trailing, trend };
+        }
+
+        // EQH/EQL Calculation
+        function calculateEQH_EQL(data) {
+            let events = [];
+            const length = 5; // Lookback for local pivots
+            const threshold = 0.1; // ATR threshold
+            const atrs = calculateATR(data, 200);
+
+            // Simulating pivot detection for EQH/EQL
+            // We need 1st pivot, then 2nd pivot, check if equal
+            // This is a simplified version: check strictly if local high matches previous local high within threshold
+
+            let lastHigh = NaN; let lastHighIdx = -1;
+            let lastLow = NaN; let lastLowIdx = -1;
+
+            for (let i = length * 2; i < data.length; i++) {
+                let idx = i - length;
+                // Check if idx is a pivot high
+                let isHigh = true;
+                let isLow = true;
+                for (let k = 1; k <= length; k++) {
+                    if (data[idx + k].high >= data[idx].high || data[idx - k].high >= data[idx].high) isHigh = false;
+                    if (data[idx + k].low <= data[idx].low || data[idx - k].low <= data[idx].low) isLow = false;
+                }
+
+                if (isHigh) {
+                    if (!isNaN(lastHigh)) {
+                        let diff = Math.abs(data[idx].high - lastHigh);
+                        let th = atrs[idx] * threshold;
+                        if (diff <= th) {
+                            events.push({ index: idx, price: data[idx].high, type: 'EQH' });
+                        }
+                    }
+                    lastHigh = data[idx].high;
+                    lastHighIdx = idx;
+                }
+
+                if (isLow) {
+                    if (!isNaN(lastLow)) {
+                        let diff = Math.abs(data[idx].low - lastLow);
+                        let th = atrs[idx] * threshold;
+                        if (diff <= th) {
+                            events.push({ index: idx, price: data[idx].low, type: 'EQL' });
+                        }
+                    }
+                    lastLow = data[idx].low;
+                    lastLowIdx = idx;
+                }
+            }
+            return events;
+        }
+
+
+        // 辅助：计算 ATR
+        function calculateATR(data, period) {
+            let atrs = [];
+            let trs = [];
+            for (let i = 0; i < data.length; i++) {
+                let tr = i === 0 ? data[i].high - data[i].low : Math.max(data[i].high - data[i].low, Math.abs(data[i].high - data[i - 1].close), Math.abs(data[i].low - data[i - 1].close));
+                trs.push(tr);
+                if (i < period) {
+                    atrs.push(trs.reduce((a, b) => a + b, 0) / (i + 1));
+                } else {
+                    atrs.push((atrs[i - 1] * (period - 1) + tr) / period);
+                }
+            }
+            return atrs;
+        }
+
+        // 辅助：创建 OB
+        function createOrderBlock(obs, data, startIndex, endIndex, type, atrs, isInternal = false) {
+            let bestCandle = -1;
+            let extremeVal = (type === 'bull') ? Infinity : -Infinity;
+
+            // 在波段范围内寻找极值 K 线
+            for (let k = startIndex; k <= endIndex; k++) {
+                if (type === 'bull') {
+                    if (data[k].low < extremeVal) {
+                        extremeVal = data[k].low;
+                        bestCandle = k;
+                    }
+                } else {
+                    if (data[k].high > extremeVal) {
+                        extremeVal = data[k].high;
+                        bestCandle = k;
+                    }
+                }
+            }
+
+            if (bestCandle !== -1) {
+                // Volatility Filter
+                let range = data[bestCandle].high - data[bestCandle].low;
+                // Relaxed: > 1.5 * ATR (was 2.0). Many valid OBs are not super volatile.
+                let isVolatile = range > 1.5 * atrs[bestCandle];
+
+                // Also, ensure we don't accidentally ignore "Top" blocks just because of ATR.
+                // If it's a Swing Pivot, we should probably keep it regardless?
+                // For now, relax ATR multiplier.
+
+                let top, bottom;
+                if (type === 'bull') {
+                    bottom = data[bestCandle].low;
+                    top = isVolatile ? data[bestCandle].low + range * 0.5 : data[bestCandle].high; // 如果波动大，只取下半部
+                } else {
+                    top = data[bestCandle].high;
+                    bottom = isVolatile ? data[bestCandle].high - range * 0.5 : data[bestCandle].low;
+                }
+
+                // 压入 OB 数组
+                obs.push({
+                    idx: bestCandle, // 原始K线索引
+                    start: bestCandle,
+                    end: data.length - 1, // 默认延伸到最后
+                    top: top,
+                    bottom: bottom,
+                    type: type,
+                    mitigated: false,
+                    isInternal: isInternal
+                });
+            }
+        }
+
+        // ================= Supertrend (无竖线版) =================
+        function calculateST(data) {
+            const period = 10, mult = 3.0;
+            let tr = data.map((d, i) => i === 0 ? d.high - d.low : Math.max(d.high - d.low, Math.abs(d.high - data[i - 1].close), Math.abs(d.low - data[i - 1].close)));
+            let atr = new Array(data.length).fill(0);
+            let sum = 0; for (let i = 0; i < data.length; i++) { sum += tr[i]; if (i >= period) sum -= tr[i - period]; atr[i] = sum / (i < period ? i + 1 : period); }
+            let up = 0, dn = 0, trend = 1;
+            let upL = [], dnL = [], sigs = [];
+            for (let i = 0; i < data.length; i++) {
+                let hl2 = (data[i].high + data[i].low) / 2;
+                let bUp = hl2 - (mult * atr[i]), bDn = hl2 + (mult * atr[i]);
+                if (i > 0) {
+                    up = data[i - 1].close > up ? Math.max(bUp, up) : bUp;
+                    dn = data[i - 1].close < dn ? Math.min(bDn, dn) : bDn;
+                    let prevT = trend;
+                    if (trend === -1 && data[i].close > dn) trend = 1;
+                    else if (trend === 1 && data[i].close < up) trend = -1;
+                    if (prevT === -1 && trend === 1) sigs.push({ idx: i, type: 'BUY', p: data[i].low });
+                    if (prevT === 1 && trend === -1) sigs.push({ idx: i, type: 'SELL', p: data[i].high });
+                } else { up = bUp; dn = bDn; }
+                if (trend === 1) { upL.push([i, up]); dnL.push([i, "-"]); }
+                else { dnL.push([i, dn]); upL.push([i, "-"]); }
+            }
+            return { upL, dnL, sigs };
+        }
+
+        // ================= Squeeze Momentum Indicator =================
+        function calcSqueezeMomentum(data) {
+            const bbLen = 20, bbMult = 2.0, kcLen = 20, kcMult = 1.5;
+            let result = [];
+
+            for (let i = 0; i < data.length; i++) {
+                if (i < Math.max(bbLen, kcLen)) {
+                    result.push({ val: 0, color: '#888', sqzColor: '#2196F3' });
+                    continue;
+                }
+
+                // SMA (basis/ma)
+                let sum = 0;
+                for (let j = i - bbLen + 1; j <= i; j++) sum += data[j].close;
+                let basis = sum / bbLen;
+
+                // StdDev for BB (using bbMult for BB)
+                let sqSum = 0;
+                for (let j = i - bbLen + 1; j <= i; j++) sqSum += Math.pow(data[j].close - basis, 2);
+                let stdev = Math.sqrt(sqSum / bbLen);
+                // Note: dev = multKC * stdev (in original script, this is actually mult, not multKC for BB)
+                // Original: dev = multKC * stdev(source, length) -- but this uses BB mult
+                let upperBB = basis + bbMult * stdev;
+                let lowerBB = basis - bbMult * stdev;
+
+                // True Range for KC
+                let trSum = 0;
+                for (let j = i - kcLen + 1; j <= i; j++) {
+                    let tr = j === 0 ? data[j].high - data[j].low :
+                        Math.max(data[j].high - data[j].low,
+                            Math.abs(data[j].high - data[j - 1].close),
+                            Math.abs(data[j].low - data[j - 1].close));
+                    trSum += tr;
+                }
+                let rangema = trSum / kcLen;
+                let upperKC = basis + rangema * kcMult;
+                let lowerKC = basis - rangema * kcMult;
+
+                // Squeeze detection (matching TradingView exactly)
+                let sqzOn = (lowerBB > lowerKC) && (upperBB < upperKC);
+                let sqzOff = (lowerBB < lowerKC) && (upperBB > upperKC);
+                let noSqz = !sqzOn && !sqzOff;
+
+                // Momentum: linreg(close - avg(avg(highest, lowest), sma), length, 0)
+                // Find highest high and lowest low over kcLen
+                let hh = -Infinity, ll = Infinity;
+                for (let j = i - kcLen + 1; j <= i; j++) {
+                    if (data[j].high > hh) hh = data[j].high;
+                    if (data[j].low < ll) ll = data[j].low;
+                }
+                // avg(highest, lowest) = (hh + ll) / 2
+                // avg(avg(hh,ll), sma) = ((hh + ll) / 2 + basis) / 2
+                let midline = ((hh + ll) / 2 + basis) / 2;
+
+                // Linear regression of (close - midline) over kcLen bars
+                let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+                for (let j = 0; j < kcLen; j++) {
+                    let idx = i - kcLen + 1 + j;
+                    let y = data[idx].close - midline;
+                    sumX += j;
+                    sumY += y;
+                    sumXY += j * y;
+                    sumX2 += j * j;
+                }
+                let denom = kcLen * sumX2 - sumX * sumX;
+                let slope = denom === 0 ? 0 : (kcLen * sumXY - sumX * sumY) / denom;
+                let intercept = (sumY - slope * sumX) / kcLen;
+                // linreg at offset 0 = value at most recent bar
+                let val = intercept + slope * (kcLen - 1);
+
+                // Colors (matching TradingView: lime/green for up, red/maroon for down)
+                let prevVal = i > 0 && result[i - 1] ? result[i - 1].val : 0;
+                let color;
+                if (val > 0) {
+                    color = val > prevVal ? '#00FF00' : '#008800'; // lime : green
+                } else {
+                    color = val < prevVal ? '#FF0000' : '#800000'; // red : maroon
+                }
+                // Squeeze color: noSqz=blue, sqzOn=black, sqzOff=gray
+                let sqzColor = noSqz ? '#2196F3' : (sqzOn ? '#000000' : '#808080');
+
+                result.push({ val, color, sqzColor });
+            }
+            return result;
+        }
+
+        // ================= ML RSI with Dynamic K-Means (Optimized) =================
+        function calcMLRSI(data) {
+            const period = 14, smoothPeriod = 4;
+            const maxData = 3000, maxIter = 50;
+
+            // 1. Calculate Wilder's RSI (RMA)
+            let rawRSI = new Array(data.length).fill(NaN);
+            let avgGain = 0, avgLoss = 0;
+            for (let i = 1; i < data.length; i++) {
+                let diff = data[i].close - data[i - 1].close;
+                let gain = diff > 0 ? diff : 0;
+                let loss = diff < 0 ? -diff : 0;
+                if (i < period) {
+                    avgGain += gain; avgLoss += loss;
+                    if (i === period - 1) { avgGain /= period; avgLoss /= period; }
+                } else {
+                    avgGain = (avgGain * (period - 1) + gain) / period;
+                    avgLoss = (avgLoss * (period - 1) + loss) / period;
+                    let rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
+                    rawRSI[i] = 100 - (100 / (1 + rs));
+                }
+            }
+
+            // 2. Smooth RSI with EMA
+            let smoothedRSI = new Array(data.length).fill(NaN);
+            let ema = NaN;
+            let mult = 2 / (smoothPeriod + 1);
+            let firstValidIdx = rawRSI.findIndex(v => !isNaN(v));
+            if (firstValidIdx !== -1) {
+                ema = rawRSI[firstValidIdx];
+                smoothedRSI[firstValidIdx] = ema;
+                for (let i = firstValidIdx + 1; i < data.length; i++) {
+                    ema = (rawRSI[i] - ema) * mult + ema;
+                    smoothedRSI[i] = ema;
+                }
+            }
+
+            // 3. Dynamic Threshold Calculation (Bar-by-Bar)
+            let longThreshes = new Array(data.length).fill(NaN);
+            let shortThreshes = new Array(data.length).fill(NaN);
+            let clusters = new Array(data.length).fill(NaN); // 0=low, 1=mid, 2=high
+            let memory = [];
+            // Default thresholds
+            let currentLong = 70, currentShort = 30;
+
+            function getPercentile(arr, p) {
+                if (arr.length === 0) return 0;
+                let index = (arr.length - 1) * (p / 100);
+                let lower = Math.floor(index);
+                let upper = Math.ceil(index);
+                let weight = index - lower;
+                return arr[lower] * (1 - weight) + arr[upper] * weight;
+            }
+
+            for (let i = 0; i < data.length; i++) {
+                let val = smoothedRSI[i];
+                if (!isNaN(val)) {
+                    // Pine Script Logic: only collect if within maxData bars from the end
+                    // Equivalent to: if last_bar_index - bar_index <= maxData
+                    if (data.length - 1 - i <= maxData) {
+                        memory.push(val);
+                    }
+
+                    if (memory.length >= 3) {
+                        // Pine Script Logic:
+                        // 1. Init from percentiles (25, 50, 75) at EVERY bar
+                        let sorted = [...memory].sort((a, b) => a - b);
+                        let centroids = [
+                            getPercentile(sorted, 25),
+                            getPercentile(sorted, 50),
+                            getPercentile(sorted, 75)
+                        ];
+
+                        // 2. K-Means Refinement (match Pine Script maxIter=1000)
+                        for (let iter = 0; iter < 1000; iter++) {
+                            let clusters = [[], [], []];
+                            // Assign each value to nearest centroid
+                            for (let v of memory) {
+                                let d0 = Math.abs(v - centroids[0]);
+                                let d1 = Math.abs(v - centroids[1]);
+                                let d2 = Math.abs(v - centroids[2]);
+                                let minD = Math.min(d0, d1, d2);
+                                if (minD === d0) clusters[0].push(v);
+                                else if (minD === d1) clusters[1].push(v);
+                                else clusters[2].push(v);
+                            }
+
+                            // Update centroids as cluster averages
+                            let newC = clusters.map((cl, idx) =>
+                                cl.length > 0 ? cl.reduce((a, b) => a + b) / cl.length : centroids[idx]
+                            );
+
+                            // Check convergence
+                            if (newC.every((v, idx) => Math.abs(v - centroids[idx]) < 0.001)) break;
+                            centroids = newC;
+                        }
+
+                        // 3. Set thresholds - Pine Script uses indices directly WITHOUT sorting
+                        // centroids[0] was initialized from 25th percentile → short threshold
+                        // centroids[2] was initialized from 75th percentile → long threshold
+                        currentShort = centroids[0];
+                        currentLong = centroids[2];
+                    }
+                }
+                longThreshes[i] = currentLong;
+                shortThreshes[i] = currentShort;
+
+                // Assign cluster based on distance to centroids
+                if (!isNaN(val) && memory.length >= 3) {
+                    let sorted = [currentShort, (currentShort + currentLong) / 2, currentLong];
+                    let d0 = Math.abs(val - sorted[0]);
+                    let d1 = Math.abs(val - sorted[1]);
+                    let d2 = Math.abs(val - sorted[2]);
+                    let minD = Math.min(d0, d1, d2);
+                    if (minD === d0) clusters[i] = 0;      // Cluster 1 (low) - green
+                    else if (minD === d1) clusters[i] = 1; // Cluster 2 (mid) - orange
+                    else clusters[i] = 2;                  // Cluster 3 (high) - red
+                }
+            }
+
+            return { rsi: smoothedRSI, longThresh: longThreshes, shortThresh: shortThreshes, clusters: clusters };
+        }
+
+        // ================= Lorentzian Classification (Enhanced) =================
+        function calcLorentzian(data) {
+            const neighborsCount = 8, maxBars = Math.min(2000, data.length);
+            let signals = [];
+            let kernelLine = []; // Kernel regression estimate
+
+            // Helper: normalize to 0-100 range
+            function normalize(arr) {
+                let min = Math.min(...arr), max = Math.max(...arr);
+                let range = max - min || 1;
+                return arr.map(v => ((v - min) / range) * 100);
+            }
+
+            // Rational Quadratic Kernel (simplified Nadaraya-Watson)
+            function kernelRegression(data, h, r, len) {
+                let result = [];
+                for (let i = 0; i < data.length; i++) {
+                    if (i < len) { result.push(data[i].close); continue; }
+                    let sumW = 0, sumWY = 0;
+                    for (let j = 0; j < len; j++) {
+                        let idx = i - j;
+                        // Rational quadratic kernel: (1 + (x^2)/(2*r*h^2))^(-r)
+                        let x = j;
+                        let w = Math.pow(1 + (x * x) / (2 * r * h * h), -r);
+                        sumW += w;
+                        sumWY += w * data[idx].close;
+                    }
+                    result.push(sumW === 0 ? data[i].close : sumWY / sumW);
+                }
+                return result;
+            }
+
+            // Calculate kernel regression line (h=8, r=8, lookback=25)
+            kernelLine = kernelRegression(data, 8, 8, 25);
+
+            // Calculate features: RSI, CCI, ADX
+            let rsiArr = new Array(data.length).fill(50);
+            let cciArr = new Array(data.length).fill(0);
+            let adxArr = new Array(data.length).fill(25);
+
+            // 1. Wilder's RSI for Lorentzian
+            let avgGain = 0, avgLoss = 0, rsiLen = 14;
+            for (let i = 1; i < data.length; i++) {
+                let diff = data[i].close - data[i - 1].close;
+                let gain = diff > 0 ? diff : 0;
+                let loss = diff < 0 ? -diff : 0;
+                if (i < rsiLen) {
+                    avgGain += gain; avgLoss += loss;
+                    if (i === rsiLen - 1) { avgGain /= rsiLen; avgLoss /= rsiLen; }
+                } else {
+                    avgGain = (avgGain * (rsiLen - 1) + gain) / rsiLen;
+                    avgLoss = (avgLoss * (rsiLen - 1) + loss) / rsiLen;
+                    let rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
+                    rsiArr[i] = 100 - (100 / (1 + rs));
+                }
+            }
+
+            for (let i = 0; i < data.length; i++) {
+                // 2. CCI (20)
+                if (i >= 20) {
+                    let tp = (data[i].high + data[i].low + data[i].close) / 3;
+                    let sum = 0;
+                    for (let j = i - 19; j <= i; j++) {
+                        let tpj = (data[j].high + data[j].low + data[j].close) / 3;
+                        sum += tpj;
+                    }
+                    let sma = sum / 20;
+                    let mad = 0;
+                    for (let j = i - 19; j <= i; j++) {
+                        let tpj = (data[j].high + data[j].low + data[j].close) / 3;
+                        mad += Math.abs(tpj - sma);
+                    }
+                    mad /= 20;
+                    cciArr[i] = mad === 0 ? 0 : (tp - sma) / (0.015 * mad);
+                }
+
+                // 3. ADX (14)
+                if (i >= 28) {
+                    let plusDM = 0, minusDM = 0, atr = 0;
+                    for (let j = i - 13; j <= i; j++) {
+                        let up = data[j].high - data[j - 1].high;
+                        let down = data[j - 1].low - data[j].low;
+                        plusDM += (up > down && up > 0) ? up : 0;
+                        minusDM += (down > up && down > 0) ? down : 0;
+                        atr += Math.max(data[j].high - data[j].low,
+                            Math.abs(data[j].high - data[j - 1].close),
+                            Math.abs(data[j].low - data[j - 1].close));
+                    }
+                    let plusDI = atr === 0 ? 0 : (plusDM / atr) * 100;
+                    let minusDI = atr === 0 ? 0 : (minusDM / atr) * 100;
+                    let dx = (plusDI + minusDI) === 0 ? 0 : Math.abs(plusDI - minusDI) / (plusDI + minusDI) * 100;
+                    adxArr[i] = dx;
+                }
+            }
+
+            // Normalize features
+            let normRSI = normalize(rsiArr);
+            let normCCI = normalize(cciArr);
+            let normADX = normalize(adxArr);
+
+            // Training labels: if price 4 bars later is higher = 1 (long), lower = -1 (short)
+            let labels = [];
+            for (let i = 0; i < data.length; i++) {
+                if (i + 4 >= data.length) labels.push(0);
+                else if (data[i + 4].close > data[i].close) labels.push(1);
+                else if (data[i + 4].close < data[i].close) labels.push(-1);
+                else labels.push(0);
+            }
+
+            // KNN with Lorentzian distance
+            for (let i = 0; i < data.length; i++) {
+                if (i < 50) { signals.push({ pred: 0, signal: 0, strength: 0, kernel: kernelLine[i] }); continue; }
+
+                let distances = [];
+                let start = Math.max(0, i - maxBars);
+
+                for (let j = start; j < i - 4; j++) {
+                    // Lorentzian distance: sum of log(1 + |diff|)
+                    let d = Math.log(1 + Math.abs(normRSI[i] - normRSI[j])) +
+                        Math.log(1 + Math.abs(normCCI[i] - normCCI[j])) +
+                        Math.log(1 + Math.abs(normADX[i] - normADX[j]));
+                    distances.push({ d, label: labels[j] });
+                }
+
+                // Sort by distance and take k nearest
+                distances.sort((a, b) => a.d - b.d);
+                let kNearest = distances.slice(0, neighborsCount);
+
+                // Vote with strength (sum of labels)
+                let pred = kNearest.reduce((sum, n) => sum + n.label, 0);
+                let strength = Math.abs(pred); // Signal strength 0-8
+
+                // Signal change detection with kernel confirmation
+                let prevPred = i > 0 && signals[i - 1] ? signals[i - 1].pred : 0;
+                let kernelUp = i > 1 && kernelLine[i] > kernelLine[i - 1];
+                let kernelDn = i > 1 && kernelLine[i] < kernelLine[i - 1];
+
+                let signal = 0;
+                // Buy: prediction turns positive AND kernel is rising
+                if (pred > 0 && prevPred <= 0 && kernelUp) signal = 1;
+                // Sell: prediction turns negative AND kernel is falling
+                else if (pred < 0 && prevPred >= 0 && kernelDn) signal = -1;
+
+                signals.push({ pred, signal, strength, kernel: kernelLine[i] });
+            }
+
+            return signals;
+        }
+
+        // --- 绘图逻辑 ---
+        function renderChart() {
+            const dates = globalData.map(i => i.day);
+            const candleValues = globalData.map(d => [d.open, d.close, d.low, d.high]);
+            const subCount = selectedIndicators.length;
+            const grids = [{ left: '50', right: '40', top: '10%', height: '45%' }];
+            const xAxes = [{ type: 'category', data: dates, boundaryGap: false, splitLine: { show: false } }];
+            const yAxes = [{ scale: true, splitArea: { show: true } }];
+
+            selectedIndicators.forEach((type, idx) => {
+                const topPos = 61 + (idx * 12);
+                grids.push({ left: '50', right: '40', top: topPos + '%', height: '10%' });
+                xAxes.push({ type: 'category', gridIndex: idx + 1, data: dates, axisLabel: { show: false } });
+                yAxes.push({ gridIndex: idx + 1, scale: true, splitNumber: 2 });
+            });
+
+            let series = [
+                { name: 'K线', type: 'candlestick', data: candleValues, itemStyle: { color: '#ef232a', color0: '#14b143', borderColor: '#ef232a', borderColor0: '#14b143' } },
+                { name: 'MA5', type: 'line', data: globalIndicators.ma5, smooth: true, lineStyle: { opacity: 0.3 } },
+                { name: 'MA20', type: 'line', data: globalIndicators.ma20, smooth: true, lineStyle: { opacity: 0.3 } }
+            ];
+
+            if (showST) {
+                if (!globalST) globalST = calculateST(globalData); // 使用缓存
+                let st = globalST;
+                series.push({ name: 'ST Up', type: 'line', step: 'end', data: st.upL, connectNulls: false, lineStyle: { width: 3, color: '#089981' }, symbol: 'none', z: 10 });
+                series.push({ name: 'ST Down', type: 'line', step: 'end', data: st.dnL, connectNulls: false, lineStyle: { width: 3, color: '#f23645' }, symbol: 'none', z: 10 });
+                series.push({ type: 'line', data: [], markPoint: { symbol: 'pin', symbolSize: 30, data: st.sigs.map(s => ({ coord: [s.idx, s.p], value: s.type, itemStyle: { color: s.type === 'BUY' ? '#089981' : '#f23645' }, label: { fontSize: 8, fontWeight: 'bold' } })) } });
+            }
+
+            if (showSMC) {
+                try {
+                    if (!globalSMC) globalSMC = calculateAllSMC(globalData); // 使用缓存
+                    let smc = globalSMC;
+                    let mLines = [], mAreas = [], mPoints = [];
+
+                    // 1. Structure Lines (Swing & Internal)
+                    // Function to add structure lines
+                    function addStructureLines(structList, isInternal) {
+                        structList.forEach(l => {
+                            mLines.push([
+                                { coord: [l.start, l.price], lineStyle: { color: l.color, type: isInternal ? 'dotted' : (l.label.includes('BOS') ? 'dashed' : 'solid'), width: isInternal ? 1 : 2 } },
+                                { coord: [l.end, l.price], label: { formatter: l.label, position: 'end', color: l.color, fontWeight: isInternal ? 'normal' : 'bold', fontSize: isInternal ? 9 : 11 } }
+                            ]);
+                        });
+                    }
+
+                    addStructureLines(smc.swing.structure, false);
+                    addStructureLines(smc.internal.structure, true);
+
+                    // 2. Trailing Extremes (Swing Only - Strong High/Low)
+                    // 只画大级別的 Strong High / Weak Low
+                    let t = smc.swing.trailing;
+                    let trend = smc.swing.trend;
+
+                    let topColor = '#f23645';
+                    let bottomColor = '#089981';
+
+                    let topText = (trend === -1) ? 'Strong High' : 'Weak High';
+                    let bottomText = (trend === 1) ? 'Strong Low' : 'Weak Low';
+
+                    let lastIdx = globalData.length - 1;
+
+                    mLines.push([
+                        { coord: [t.lastTopTime, t.top], lineStyle: { color: topColor, type: 'solid', width: 2 } },
+                        { coord: [lastIdx, t.top], label: { formatter: topText, position: 'end', color: topColor, fontWeight: 'bold' } }
+                    ]);
+
+                    mLines.push([
+                        { coord: [t.lastBottomTime, t.bottom], lineStyle: { color: bottomColor, type: 'solid', width: 2 } },
+                        { coord: [lastIdx, t.bottom], label: { formatter: bottomText, position: 'end', color: bottomColor, fontWeight: 'bold' } }
+                    ]);
+
+                    // 3. EQH / EQL
+                    smc.eq.forEach(e => {
+                        mPoints.push({
+                            coord: [e.index, e.price],
+                            value: e.type,
+                            label: { show: true, position: e.type === 'EQH' ? 'top' : 'bottom', color: e.type === 'EQH' ? '#f23645' : '#089981', fontSize: 10 },
+                            itemStyle: { color: 'transparent' }
+                        });
+                    });
+
+                    // 4. Order Blocks (Combined)
+                    let allObs = [...smc.swing.obs, ...smc.internal.obs];
+                    allObs.forEach(o => {
+                        let isInternal = o.isInternal;
+                        let opacity = o.mitigated ? (isInternal ? 0.05 : 0.1) : (isInternal ? 0.2 : 0.5);
+
+                        let color;
+                        if (!isInternal) {
+                            color = o.type === 'bull' ? `rgba(24, 72, 204, ${opacity})` : `rgba(178, 40, 51, ${opacity})`;
+                        } else {
+                            color = o.type === 'bull' ? `rgba(49, 121, 245, ${opacity})` : `rgba(247, 124, 128, ${opacity})`;
+                        }
+
+                        // Force extend if unmitigated (double check visual)
+                        let xEnd = o.mitigated ? o.end : globalData.length - 1;
+
+                        mAreas.push([
+                            { coord: [o.start, o.bottom], itemStyle: { color: color, borderWidth: 0 } },
+                            { coord: [xEnd, o.top] }
+                        ]);
+                    });
+
+                    series.push({
+                        type: 'line', data: [],
+                        markLine: { silent: true, data: mLines, symbol: ['none', 'none'], animation: false },
+                        markArea: { silent: true, data: mAreas },
+                        markPoint: { symbol: 'circle', symbolSize: 1, data: mPoints }
+                    });
+                } catch (e) {
+                    console.error("SMC Render Error:", e);
+                    updateStatus("SMC Error: " + e.message, "red");
+                }
+            }
+
+            // Lorentzian Classification signals on main chart
+            if (showLDC) {
+                if (!globalLDC) globalLDC = calcLorentzian(globalData);
+                let ldc = globalLDC;
+
+                // Kernel regression line on main chart
+                let kernelData = ldc.map((s, i) => [i, s.kernel]);
+                series.push({
+                    name: 'Kernel', type: 'line', symbol: 'none',
+                    data: kernelData,
+                    lineStyle: { width: 2, color: '#00BCD4' },
+                    z: 5
+                });
+
+                // Buy/Sell signals as arrows with strength labels
+                let signalPoints = [];
+                ldc.forEach((s, i) => {
+                    if (s.signal === 1) {
+                        signalPoints.push({
+                            coord: [i, globalData[i].low * 0.99],
+                            symbol: 'arrow', symbolRotate: 180, symbolSize: 14,
+                            itemStyle: { color: '#00FF00' },
+                            label: { show: true, formatter: s.strength.toString(), position: 'bottom', fontSize: 10, color: '#00FF00' }
+                        });
+                    } else if (s.signal === -1) {
+                        signalPoints.push({
+                            coord: [i, globalData[i].high * 1.01],
+                            symbol: 'arrow', symbolSize: 14,
+                            itemStyle: { color: '#FF0000' },
+                            label: { show: true, formatter: '-' + s.strength.toString(), position: 'top', fontSize: 10, color: '#FF0000' }
+                        });
+                    }
+                });
+
+                series.push({
+                    name: 'LDC Signals', type: 'line', data: [],
+                    markPoint: { symbolSize: 15, data: signalPoints }
+                });
+            }
+
+
+            if (showZigZag && globalZigZag.length > 0) {
+                let zz = new Array(candleValues.length).fill(null);
+                globalZigZag.forEach(p => { zz[p.index] = p.price; });
+                series.push({ name: 'ZigZag', type: 'line', data: zz, connectNulls: true, symbol: 'circle', symbolSize: 5, lineStyle: { color: '#eb2f96', type: 'dotted' } });
+            }
+
+            if (showTrendLines && globalTrendInfo) {
+                let ti = globalTrendInfo;
+                series.push({ name: '趋势线', type: 'line', data: [], markLine: { symbol: ['none', 'none'], data: [[{ coord: [ti.resIdx, ti.resStart] }, { coord: [globalData.length - 1, ti.resEnd] }], [{ coord: [ti.supIdx, ti.supStart] }, { coord: [globalData.length - 1, ti.supEnd] }]], lineStyle: { color: '#1890ff', width: 1.5, type: 'dashed' } } });
+            }
+
+            selectedIndicators.forEach((indicator, idx) => {
+                let gIdx = idx + 1;
+                let vols = globalData.map((d, i) => [i, d.volume, d.open > d.close ? 1 : -1]);
+                if (indicator === 'VOL') series.push({ name: 'VOL', type: 'bar', xAxisIndex: gIdx, yAxisIndex: gIdx, data: vols.map(v => ({ value: v[1], itemStyle: { color: v[2] > 0 ? '#ef232a' : '#14b143' } })) });
+                else if (indicator === 'MACD') {
+                    let m = globalIndicators.macd;
+                    series.push({ name: 'DIF', type: 'line', xAxisIndex: gIdx, yAxisIndex: gIdx, data: m.dif, symbol: 'none' }, { name: 'DEA', type: 'line', xAxisIndex: gIdx, yAxisIndex: gIdx, data: m.dea, symbol: 'none' }, { name: 'MACD', type: 'bar', xAxisIndex: gIdx, yAxisIndex: gIdx, data: m.mac.map(v => ({ value: v, itemStyle: { color: v > 0 ? '#ef232a' : '#14b143' } })) });
+                } else if (indicator === 'RSI') series.push({ name: 'RSI', type: 'line', xAxisIndex: gIdx, yAxisIndex: gIdx, data: globalIndicators.rsi, symbol: 'none' });
+                else if (indicator === 'KDJ') {
+                    let k = globalIndicators.kdj;
+                    series.push({ name: 'K', type: 'line', xAxisIndex: gIdx, yAxisIndex: gIdx, data: k.k, symbol: 'none' }, { name: 'D', type: 'line', xAxisIndex: gIdx, yAxisIndex: gIdx, data: k.d, symbol: 'none' }, { name: 'J', type: 'line', xAxisIndex: gIdx, yAxisIndex: gIdx, data: k.j, symbol: 'none' });
+                } else if (indicator === 'WR') series.push({ name: 'WR', type: 'line', xAxisIndex: gIdx, yAxisIndex: gIdx, data: globalIndicators.wr, symbol: 'none' });
+                else if (indicator === 'SQZ') {
+                    // Squeeze Momentum Indicator
+                    let sqz = calcSqueezeMomentum(globalData);
+                    series.push({
+                        name: 'SQZMOM', type: 'bar', xAxisIndex: gIdx, yAxisIndex: gIdx,
+                        data: sqz.map(s => ({ value: s.val, itemStyle: { color: s.color } }))
+                    });
+                    // Squeeze signal dots on zero line
+                    series.push({
+                        name: 'SQZ Signal', type: 'scatter', xAxisIndex: gIdx, yAxisIndex: gIdx,
+                        symbolSize: 6, data: sqz.map((s, i) => ({ value: [i, 0], itemStyle: { color: s.sqzColor } }))
+                    });
+                }
+                else if (indicator === 'MLRSI') {
+                    // ML RSI with dynamic thresholds - segmented coloring
+                    let ml = calcMLRSI(globalData);
+
+                    // Create three separate line series for different zones based on dynamic thresholds
+                    let greenData = ml.rsi.map((v, i) => v > ml.longThresh[i] ? v : null);
+                    let redData = ml.rsi.map((v, i) => v < ml.shortThresh[i] ? v : null);
+
+                    // Main RSI line (gray baseline)
+                    series.push({
+                        name: 'ML RSI', type: 'line', xAxisIndex: gIdx, yAxisIndex: gIdx, symbol: 'none',
+                        data: ml.rsi,
+                        lineStyle: { width: 2, color: '#888888' },
+                        z: 1
+                    });
+                    // Green overlay (Bullish)
+                    series.push({
+                        name: 'RSI Long', type: 'line', xAxisIndex: gIdx, yAxisIndex: gIdx, symbol: 'none',
+                        data: greenData, connectNulls: false,
+                        lineStyle: { width: 3, color: '#00FF00' },
+                        z: 2
+                    });
+                    // Red overlay (Bearish)
+                    series.push({
+                        name: 'RSI Short', type: 'line', xAxisIndex: gIdx, yAxisIndex: gIdx, symbol: 'none',
+                        data: redData, connectNulls: false,
+                        lineStyle: { width: 3, color: '#FF0000' },
+                        z: 2
+                    });
+
+                    // Dynamic threshold lines (as curves)
+                    series.push({
+                        name: 'Long Thresh', type: 'line', xAxisIndex: gIdx, yAxisIndex: gIdx, symbol: 'none',
+                        data: ml.longThresh,
+                        lineStyle: { color: '#00FF00', type: 'solid', opacity: 0.5, width: 1 }
+                    });
+                    series.push({
+                        name: 'Short Thresh', type: 'line', xAxisIndex: gIdx, yAxisIndex: gIdx, symbol: 'none',
+                        data: ml.shortThresh,
+                        lineStyle: { color: '#FF0000', type: 'solid', opacity: 0.5, width: 1 }
+                    });
+
+                    // Cluster circle plots (matching TradingView: green/orange/red circles)
+                    let cluster1Data = ml.rsi.map((v, i) => ml.clusters[i] === 0 ? v : null);
+                    let cluster2Data = ml.rsi.map((v, i) => ml.clusters[i] === 1 ? v : null);
+                    let cluster3Data = ml.rsi.map((v, i) => ml.clusters[i] === 2 ? v : null);
+
+                    series.push({
+                        name: 'Cluster 1', type: 'scatter', xAxisIndex: gIdx, yAxisIndex: gIdx,
+                        symbolSize: 6,
+                        data: cluster1Data.map((v, i) => v !== null ? [i, v] : null).filter(d => d !== null),
+                        itemStyle: { color: '#00FF00' } // Green - low cluster
+                    });
+                    series.push({
+                        name: 'Cluster 2', type: 'scatter', xAxisIndex: gIdx, yAxisIndex: gIdx,
+                        symbolSize: 6,
+                        data: cluster2Data.map((v, i) => v !== null ? [i, v] : null).filter(d => d !== null),
+                        itemStyle: { color: '#FFA500' } // Orange - middle cluster
+                    });
+                    series.push({
+                        name: 'Cluster 3', type: 'scatter', xAxisIndex: gIdx, yAxisIndex: gIdx,
+                        symbolSize: 6,
+                        data: cluster3Data.map((v, i) => v !== null ? [i, v] : null).filter(d => d !== null),
+                        itemStyle: { color: '#FF0000' } // Red - high cluster
+                    });
+                }
+            });
+
+            myChart.hideLoading();
+            myChart.setOption({ grid: grids, xAxis: xAxes, yAxis: yAxes, series: series, dataZoom: [{ type: 'inside', start: 70, end: 100, xAxisIndex: [0, 1, 2, 3], zoomOnMouseWheel: false, moveOnMouseWheel: false, moveOnMouseMove: false }, { type: 'slider', top: '95%', start: 70, end: 100, xAxisIndex: [0, 1, 2, 3] }], tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } } }, true);
+        }
+
+        // --- 数据获取与交互逻辑 (保持稳定) ---
+        function getSmartZigZag(data) { var d = 3.0, p = [], c = 0; while (c < 10) { p = calculateZigZag(data, d); if (p.length >= 8) return p; d /= 2; c++ } return p; }
+        function calculateZigZag(data, dev) { var r = [], t = 0, lp = data[0].close, li = 0; r.push({ index: 0, price: lp, type: 'start' }); for (var i = 1; i < data.length; i++) { var h = data[i].high, l = data[i].low, dh = (h - lp) / lp * 100, dl = (l - lp) / lp * 100; if (t === 0) { if (Math.abs(dh) >= dev) { t = 1; lp = h; li = i } else if (Math.abs(dl) >= dev) { t = -1; lp = l; li = i } } else if (t === 1) { if (h > lp) { lp = h; li = i } else if (dl <= -dev) { r.push({ index: li, price: lp, type: 'high' }); t = -1; lp = l; li = i } } else if (t === -1) { if (l < lp) { lp = l; li = i } else if (dh >= dev) { r.push({ index: li, price: lp, type: 'low' }); t = 1; lp = h; li = i } } } return r; }
+        function calculateTrendLines(z) { var hs = z.filter(p => p.type === 'high').slice(-3), ls = z.filter(p => p.type === 'low').slice(-3); if (hs.length < 2 || ls.length < 2) return null; function lr(p) { var n = p.length, sx = 0, sy = 0, sxy = 0, sxx = 0; p.forEach(i => { sx += i.index; sy += i.price; sxy += i.index * i.price; sxx += i.index * i.index }); var m = (n * sxy - sx * sy) / (n * sxx - sx * sx); return { m: m, b: (sy - m * sx) / n, si: p[0].index } } var r = lr(hs), s = lr(ls), e = globalData.length - 1; return { resStart: r.m * r.si + r.b, resEnd: r.m * e + r.b, resIdx: r.si, supStart: s.m * s.si + s.b, supEnd: s.m * e + s.b, supIdx: s.si }; }
+        function calcMA(n, d) { return d.map((v, i) => { if (i < n) return '-'; var s = 0; for (var j = 0; j < n; j++)s += d[i - j].close; return (s / n).toFixed(2); }); }
+        function calcMACD(d) { var s = 12, l = 26, m = 9, dif = [], dea = [], mac = [], es = [], el = []; d.forEach((v, i) => { var c = v.close; if (i == 0) { es.push(c); el.push(c); dif.push(0); dea.push(0); mac.push(0); } else { es.push(es[i - 1] * (s - 1) / (s + 1) + c * 2 / (s + 1)); el.push(el[i - 1] * (l - 1) / (l + 1) + c * 2 / (l + 1)); var df = es[i] - el[i]; dif.push(df); dea.push(dea[i - 1] * (m - 1) / (m + 1) + df * 2 / (m + 1)); mac.push((df - dea[i]) * 2); } }); return { dif, dea, mac }; }
+        function calcRSI(d, n) { var r = []; d.forEach((v, i) => { if (i < n) { r.push('-'); return; } var u = 0, dw = 0; for (var j = 0; j < n; j++) { var c = d[i - j].close - d[i - j - 1].close; if (c >= 0) u += c; else dw += Math.abs(c); } r.push(((u + dw) == 0 ? 50 : u / (u + dw) * 100).toFixed(2)); }); return r; }
+        function calcKDJ(d) { var k = [], D = [], j = [], lk = 50, ld = 50; d.forEach((v, i) => { if (i < 8) { k.push(50); D.push(50); j.push(50); return; } var c = v.close, ls = [], hs = []; for (var x = 0; x < 9; x++) { ls.push(d[i - x].low); hs.push(d[i - x].high); } var l = Math.min(...ls), h = Math.max(...hs); var rsv = (h == l) ? 0 : (c - l) / (h - l) * 100; var ck = (2 / 3) * lk + (1 / 3) * rsv; var cd = (2 / 3) * ld + (1 / 3) * ck; k.push(ck.toFixed(2)); D.push(cd.toFixed(2)); j.push((3 * ck - 2 * cd).toFixed(2)); lk = ck; ld = cd; }); return { k, d: D, j }; }
+        function calcWR(d, n) { var w = []; d.forEach((v, i) => { if (i < n) { w.push('-'); return; } var c = v.close, ls = [], hs = []; for (var x = 0; x < n; x++) { ls.push(d[i - x].low); hs.push(d[i - x].high); } var l = Math.min(...ls), h = Math.max(...hs); w.push(h == l ? -50 : ((h - c) / (h - l) * -100).toFixed(2)); }); return w; }
+        function updateStatus(msg, color = '#666') { var el = document.getElementById('status-msg'); el.style.color = color; el.innerText = msg; }
+        function toggleZigZag() { showZigZag = !showZigZag; document.getElementById('btnZigZag').classList.toggle('active'); if (globalData.length > 0) renderChart(); }
+        function toggleTrendLines() { showTrendLines = !showTrendLines; document.getElementById('btnTrend').classList.toggle('active'); if (globalData.length > 0) renderChart(); }
+        function toggleSMC(btn) { showSMC = !showSMC; btn.classList.toggle('active-smc'); if (globalData.length > 0) renderChart(); }
+        function toggleST(btn) { showST = !showST; btn.classList.toggle('active-st'); if (globalData.length > 0) renderChart(); }
+        function toggleLDC(btn) { showLDC = !showLDC; btn.classList.toggle('active'); if (globalData.length > 0) renderChart(); }
+        function toggleIndicator(type, btn) { const index = selectedIndicators.indexOf(type); if (index > -1) { if (selectedIndicators.length > 1) { selectedIndicators.splice(index, 1); btn.classList.remove('active'); } } else { selectedIndicators.push(type); btn.classList.add('active'); } if (globalData.length > 0) renderChart(); }
+        function startSearch() { var input = document.getElementById('stockInput').value.trim(); if (!input) return; document.getElementById('btnSearch').disabled = true; updateStatus("🔍 搜索中...", "#1890ff"); var script = document.createElement('script'); script.src = `https://suggest3.sinajs.cn/suggest/type=&key=${encodeURIComponent(input)}&name=suggest_data_${Date.now()}`; var cb = script.src.match(/name=([^&]+)/)[1]; script.onload = function () { var res = window[cb]; if (res && res.split(',').length > 3) { var parts = res.split(','); currentName = parts[0]; currentSymbol = parts[3]; fetchKlineData(); } else { updateStatus("❌ 未找到", "red"); document.getElementById('btnSearch').disabled = false; } document.body.removeChild(script); }; document.body.appendChild(script); }
+        function switchPeriod(s, b) { var bs = b.parentNode.querySelectorAll('button'); bs.forEach(x => x.classList.remove('active')); b.classList.add('active'); if (s == 'week') { currentScale = 240; isMergeMode = true; mergeType = 'week'; } else if (s == 'month') { currentScale = 240; isMergeMode = true; mergeType = 'month'; } else { currentScale = s; isMergeMode = false; mergeType = ''; } fetchKlineData(); }
+        function fetchKlineData() {
+            myChart.showLoading();
+            var cb = `_kline_${Date.now()}`;
+            // Revert to 1023 to avoid API failures, as 2000 might be rejected or cause timeout
+            var url = `https://quotes.sina.cn/cn/api/jsonp_v2.php/var%20${cb}=/CN_MarketDataService.getKLineData?symbol=${currentSymbol}&scale=${currentScale}&ma=no&datalen=1023`;
+            var script = document.createElement('script');
+            script.src = url;
+
+            // Timeout safety
+            var timer = setTimeout(() => {
+                myChart.hideLoading();
+                updateStatus("⚠️ 请求超时", "orange");
+                document.getElementById('btnSearch').disabled = false;
+            }, 10000);
+
+            script.onload = function () {
+                clearTimeout(timer);
+                var data = window[cb];
+                if (data && data.length > 0) {
+                    try {
+                        updateStatus("");
+                        if (isMergeMode) data = mergeKLine(data, mergeType);
+                        globalData = data.map(d => ({ day: d.day, open: +d.open, close: +d.close, high: +d.high, low: +d.low, volume: +d.volume }));
+                        globalIndicators = {
+                            ma5: calcMA(5, globalData),
+                            ma20: calcMA(20, globalData),
+                            macd: calcMACD(globalData),
+                            rsi: calcRSI(globalData, 12),
+                            kdj: calcKDJ(globalData),
+                            wr: calcWR(globalData, 14)
+                        };
+                        globalZigZag = getSmartZigZag(globalData);
+                        globalTrendInfo = calculateTrendLines(globalZigZag);
+                        globalSMC = null; globalST = null; globalLDC = null;
+                        renderChart();
+                    } catch (e) {
+                        console.error("Render error:", e);
+                        myChart.hideLoading();
+                        updateStatus("⚠️ 渲染错误", "red");
+                    }
+                } else {
+                    myChart.hideLoading();
+                    updateStatus("❌ 数据为空", "red");
+                }
+                document.body.removeChild(script);
+                document.getElementById('btnSearch').disabled = false;
+            };
+            script.onerror = function () {
+                clearTimeout(timer);
+                myChart.hideLoading();
+                updateStatus("❌ 网络错误", "red");
+                document.getElementById('btnSearch').disabled = false;
+            };
+            document.body.appendChild(script);
+        }
+        function mergeKLine(data, type) { var m = [], g = null, lk = ''; data.forEach(i => { var d = new Date(i.day); var k = type == 'week' ? (() => { var day = d.getDay(); var diff = d.getDate() - day + (day == 0 ? -6 : 1); return new Date(d.setDate(diff)).toISOString().slice(0, 10) })() : i.day.slice(0, 7); if (k !== lk) { if (g) m.push(g); g = { day: i.day, open: +i.open, close: +i.close, high: +i.high, low: +i.low, volume: +i.volume }; lk = k; } else { g.close = +i.close; g.high = Math.max(g.high, +i.high); g.low = Math.min(g.low, +i.low); g.volume += +i.volume; g.day = i.day; } }); if (g) m.push(g); return m; }
+        startSearch();
+        window.onresize = function () { myChart.resize(); };
+
+        // Mac 触控板手势支持 (TradingView 风格) - 性能优化版
+        // 上下滑动 = 缩放, 左右滑动 = 平移
+        (function () {
+            let pendingDeltaX = 0, pendingDeltaY = 0;
+            let rafId = null;
+            let cachedStart = 70, cachedEnd = 100;
+
+            // 监听 dataZoom 事件更新缓存
+            myChart.on('dataZoom', function (params) {
+                if (params.start !== undefined) cachedStart = params.start;
+                if (params.end !== undefined) cachedEnd = params.end;
+            });
+
+            function processWheel() {
+                rafId = null;
+
+                let start = cachedStart;
+                let end = cachedEnd;
+                let range = end - start;
+
+                // 判断主要滑动方向
+                if (Math.abs(pendingDeltaX) > Math.abs(pendingDeltaY)) {
+                    // 水平滑动 -> 平移
+                    let moveAmount = (pendingDeltaX / 300) * range;
+                    let newStart = start + moveAmount;
+                    let newEnd = end + moveAmount;
+
+                    if (newStart < 0) { newStart = 0; newEnd = range; }
+                    if (newEnd > 100) { newEnd = 100; newStart = 100 - range; }
+
+                    cachedStart = newStart;
+                    cachedEnd = newEnd;
+                    myChart.dispatchAction({ type: 'dataZoom', start: newStart, end: newEnd });
+                } else if (Math.abs(pendingDeltaY) > 2) {
+                    // 垂直滑动 -> 缩放 (添加死区)
+                    let zoomAmount = pendingDeltaY / 300;
+                    let center = (start + end) / 2;
+                    let newRange = range * (1 + zoomAmount);
+
+                    newRange = Math.max(5, Math.min(100, newRange));
+
+                    let newStart = center - newRange / 2;
+                    let newEnd = center + newRange / 2;
+
+                    if (newStart < 0) { newStart = 0; newEnd = newRange; }
+                    if (newEnd > 100) { newEnd = 100; newStart = 100 - newRange; }
+
+                    cachedStart = newStart;
+                    cachedEnd = newEnd;
+                    myChart.dispatchAction({ type: 'dataZoom', start: newStart, end: newEnd });
+                }
+
+                pendingDeltaX = 0;
+                pendingDeltaY = 0;
+            }
+
+            document.getElementById('chart-container').addEventListener('wheel', function (e) {
+                e.preventDefault();
+
+                // 累积 delta 值
+                pendingDeltaX += e.deltaX;
+                pendingDeltaY += e.deltaY;
+
+                // 使用 RAF 节流
+                if (!rafId) {
+                    rafId = requestAnimationFrame(processWheel);
+                }
+            }, { passive: false });
+        })();
+    </script>
+</body>
+
+</html>

@@ -65,6 +65,14 @@ function fromUrlSlug(urlSlug: string, category: string): string | null {
     case 'daily':
       dir = path.join(HUGO_PATH, 'daily-report');
       break;
+    case 'morning':
+      dir = path.join(HUGO_PATH, 'morning-report');
+      break;
+    case 'quant-strategy':
+      dir = IS_VERCEL 
+        ? path.join(HUGO_PATH, 'quant-strategies')
+        : path.join(HUGO_PATH, 'research/量化策略/daily');
+      break;
     default:
       return null;
   }
@@ -97,6 +105,22 @@ export interface ReportMeta {
   author?: string;
   slug: string;
   filename: string;
+  cover_tags?: string[];
+  data_freshness?: string;
+  weekday?: string;
+  company?: string;
+  // quant strategy fields
+  strategy_type?: string;
+  market?: string;
+  data_frequency?: string;
+  holding_period?: string;
+  complexity?: string;
+  risk_level?: string;
+  strategy_status?: string;
+  core_logic?: string;
+  key_advantage?: string;
+  key_risk?: string;
+  bull_bear?: string;
 }
 
 export interface Report extends ReportMeta {
@@ -159,6 +183,18 @@ function extractDateFromFilename(filename: string): string {
   return match ? match[1] : '';
 }
 
+// 统一格式化日期，防止 yaml 解析为 Date 对象
+function normalizeDate(rawDate: any, fallback: string): string {
+  if (!rawDate) return fallback;
+  if (rawDate instanceof Date) {
+    // 确保使用本地时间，而不是UTC时间导致的偏差
+    const offset = rawDate.getTimezoneOffset();
+    const correctDate = new Date(rawDate.getTime() - (offset * 60 * 1000));
+    return correctDate.toISOString().split('T')[0];
+  }
+  return String(rawDate);
+}
+
 // 获取行业研究报告
 export async function getIndustryReports(): Promise<Report[]> {
   const HUGO_PATH = getHugoPath();
@@ -172,7 +208,9 @@ export async function getIndustryReports(): Promise<Report[]> {
       return [];
     }
     
-    const files = fs.readdirSync(dir).filter(f => f.endsWith('.md'));
+    const files = fs.readdirSync(dir).filter(f => 
+      f.endsWith('.md') && f !== 'index.md' && f !== '_index.md'
+    );
     
     const reports = files.map(file => {
       const filePath = path.join(dir, file);
@@ -180,7 +218,7 @@ export async function getIndustryReports(): Promise<Report[]> {
       const { data, content: body } = matter(content);
       
       const title = data.title || extractTitleFromFilename(file);
-      const date = data.date || extractDateFromFilename(file);
+      const date = normalizeDate(data.date, extractDateFromFilename(file));
       
       const excerpt = extractExcerpt(body, 'industry');
       return {
@@ -190,6 +228,9 @@ export async function getIndustryReports(): Promise<Report[]> {
         summary: data.summary || '',
         excerpt,
         author: data.author || '',
+        cover_tags: data.cover_tags || [],
+        data_freshness: data.data_freshness || '',
+        weekday: data.weekday || '',
         slug: toUrlSlug(file),
         filename: file,
         body,
@@ -221,7 +262,7 @@ export async function getCompanyReports(): Promise<Report[]> {
       return [];
     }
     
-    const files = fs.readdirSync(dir).filter(f => f.endsWith('.md'));
+    const files = fs.readdirSync(dir).filter(f => f.endsWith('.md') && f !== 'index.md' && f !== '_index.md');
     
     const reports = files.map(file => {
       const filePath = path.join(dir, file);
@@ -229,7 +270,7 @@ export async function getCompanyReports(): Promise<Report[]> {
       const { data, content: body } = matter(content);
       
       const title = data.title || extractTitleFromFilename(file);
-      const date = data.date || extractDateFromFilename(file);
+      const date = normalizeDate(data.date, extractDateFromFilename(file));
       
       const excerpt = extractExcerpt(body, 'company');
       return {
@@ -239,6 +280,10 @@ export async function getCompanyReports(): Promise<Report[]> {
         summary: data.summary || '',
         excerpt,
         author: data.author || '',
+        cover_tags: data.cover_tags || [],
+        data_freshness: data.data_freshness || '',
+        weekday: data.weekday || '',
+        company: data.company || '',
         slug: toUrlSlug(file),
         filename: file,
         body,
@@ -268,7 +313,7 @@ export async function getDailyReports(): Promise<Report[]> {
       return [];
     }
     
-    const files = fs.readdirSync(dir).filter(f => f.endsWith('.md'));
+    const files = fs.readdirSync(dir).filter(f => f.endsWith('.md') && f !== 'index.md' && f !== '_index.md');
     
     const reports = files.map(file => {
       const filePath = path.join(dir, file);
@@ -277,7 +322,7 @@ export async function getDailyReports(): Promise<Report[]> {
       
       const titleMatch = body.match(/^#\s+(.+)/);
       const title = data.title || (titleMatch ? titleMatch[1] : file.replace('.md', ''));
-      const date = data.date || extractDateFromFilename(file);
+      const date = normalizeDate(data.date, extractDateFromFilename(file));
       
       const excerpt = extractExcerpt(body, 'daily');
       return {
@@ -287,6 +332,9 @@ export async function getDailyReports(): Promise<Report[]> {
         summary: data.summary || '',
         excerpt,
         author: data.author || '',
+        cover_tags: data.cover_tags || [],
+        data_freshness: data.data_freshness || '',
+        weekday: data.weekday || '',
         slug: toUrlSlug(file),
         filename: file,
         body,
@@ -301,6 +349,121 @@ export async function getDailyReports(): Promise<Report[]> {
     });
   } catch (error) {
     console.error('[Hugo] 读取每日报告失败:', error);
+    return [];
+  }
+}
+
+// 获取早盘资讯报告
+export async function getMorningReports(): Promise<Report[]> {
+  const HUGO_PATH = getHugoPath();
+  try {
+    const dir = path.join(HUGO_PATH, 'morning-report');
+    
+    if (!fs.existsSync(dir)) {
+      console.log('[Hugo] 早盘资讯目录不存在:', dir);
+      return [];
+    }
+    
+    const files = fs.readdirSync(dir).filter(f => f.endsWith('.md') && f !== 'index.md' && f !== '_index.md');
+    
+    const reports = files.map(file => {
+      const filePath = path.join(dir, file);
+      const content = fs.readFileSync(filePath, 'utf-8');
+      const { data, content: body } = matter(content);
+      
+      const titleMatch = body.match(/^#\s+(.+)/);
+      const title = data.title || (titleMatch ? titleMatch[1] : file.replace('.md', ''));
+      const date = normalizeDate(data.date, extractDateFromFilename(file));
+      
+      const excerpt = extractExcerpt(body, 'morning');
+      return {
+        title,
+        date,
+        tags: data.tags || [],
+        summary: data.summary || '',
+        excerpt,
+        author: data.author || '',
+        cover_tags: data.cover_tags || [],
+        data_freshness: data.data_freshness || '',
+        weekday: data.weekday || '',
+        slug: toUrlSlug(file),
+        filename: file,
+        body,
+        category: 'morning'
+      };
+    });
+    
+    return reports.sort((a, b) => {
+      if (!a.date) return 1;
+      if (!b.date) return -1;
+      return new Date(b.date).getTime() - new Date(a.date).getTime();
+    });
+  } catch (error) {
+    console.error('[Hugo] 读取早盘资讯失败:', error);
+    return [];
+  }
+}
+
+// 获取量化策略报告
+export async function getQuantStrategyReports(): Promise<Report[]> {
+  const HUGO_PATH = getHugoPath();
+  try {
+    const dir = IS_VERCEL 
+      ? path.join(HUGO_PATH, 'quant-strategies')
+      : path.join(HUGO_PATH, 'research/量化策略/daily');
+    
+    if (!fs.existsSync(dir)) {
+      console.log('[Hugo] 量化策略目录不存在:', dir);
+      return [];
+    }
+    
+    const files = fs.readdirSync(dir).filter(f => f.endsWith('.md') && f !== 'index.md' && f !== '_index.md');
+    
+    const reports = files.map(file => {
+      const filePath = path.join(dir, file);
+      const content = fs.readFileSync(filePath, 'utf-8');
+      const { data, content: body } = matter(content);
+      
+      const titleMatch = body.match(/^#\s+(.+)/);
+      const title = data.title || (titleMatch ? titleMatch[1] : extractTitleFromFilename(file));
+      const date = normalizeDate(data.date, extractDateFromFilename(file));
+      
+      return {
+        title,
+        date,
+        tags: data.tags || [],
+        summary: data.summary || '',
+        excerpt: data.description || '',
+        author: data.author || '',
+        cover_tags: data.cover_tags || [],
+        data_freshness: data.data_freshness || '',
+        weekday: data.weekday || '',
+        slug: toUrlSlug(file),
+        filename: file,
+        body,
+        category: 'quant-strategy',
+        // quant strategy specific fields
+        strategy_type: data.strategy_type || '',
+        market: data.market || '',
+        data_frequency: data.data_frequency || '',
+        holding_period: data.holding_period || '',
+        complexity: data.complexity || '',
+        risk_level: data.risk_level || '',
+        strategy_status: data.strategy_status || '',
+        core_logic: data.core_logic || '',
+        key_advantage: data.key_advantage || '',
+        key_risk: data.key_risk || '',
+        bull_bear: data.bull_bear || '',
+      };
+    });
+    
+    return reports.sort((a, b) => {
+      if (!a.date) return 1;
+      if (!b.date) return -1;
+      return new Date(b.date).getTime() - new Date(a.date).getTime();
+    });
+  } catch (error) {
+    console.error('[Hugo] 读取量化策略报告失败:', error);
     return [];
   }
 }
@@ -330,6 +493,14 @@ export async function getReport(category: string, slug: string): Promise<Report 
     case 'daily':
       dir = path.join(HUGO_PATH, 'daily-report');
       break;
+    case 'morning':
+      dir = path.join(HUGO_PATH, 'morning-report');
+      break;
+    case 'quant-strategy':
+      dir = IS_VERCEL 
+        ? path.join(HUGO_PATH, 'quant-strategies')
+        : path.join(HUGO_PATH, 'research/量化策略/daily');
+      break;
     default:
       return null;
   }
@@ -344,7 +515,7 @@ export async function getReport(category: string, slug: string): Promise<Report 
     const { data, content: body } = matter(content);
     
     const title = data.title || extractTitleFromFilename(originalFilename);
-    const date = data.date || extractDateFromFilename(originalFilename);
+    const date = normalizeDate(data.date, extractDateFromFilename(originalFilename));
     
     return {
       title,
@@ -352,6 +523,10 @@ export async function getReport(category: string, slug: string): Promise<Report 
       tags: data.tags || [],
       summary: data.summary || '',
       author: data.author || '',
+      cover_tags: data.cover_tags || [],
+      data_freshness: data.data_freshness || '',
+      weekday: data.weekday || '',
+      company: data.company || '',
       slug,
       filename: originalFilename,
       body,
@@ -365,11 +540,13 @@ export async function getReport(category: string, slug: string): Promise<Report 
 
 // 获取所有报告
 export async function getAllReports(): Promise<Report[]> {
-  const [industries, companies, daily] = await Promise.all([
+  const [industries, companies, daily, morning, quant] = await Promise.all([
     getIndustryReports(),
     getCompanyReports(),
-    getDailyReports()
+    getDailyReports(),
+    getMorningReports(),
+    getQuantStrategyReports()
   ]);
   
-  return [...daily, ...industries, ...companies];
+  return [...daily, ...morning, ...industries, ...companies, ...quant];
 }

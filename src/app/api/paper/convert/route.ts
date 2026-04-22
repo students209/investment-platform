@@ -11,7 +11,7 @@ import path from 'path'
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || ''
 
 // Prompt template based on 研报论文解读模板-v1.md
-const SYSTEM_PROMPT = `#### **角色与目标**
+const getSystemPrompt = (uniqueId: string) => `#### **角色与目标**
 你是一名顶级的量化策略分析师与量化开发工程师。你的核心任务是接收一份投资研究报告、金融论文或策略分析文章，进行深入、全面的剖析，并输出一份结构化、深度的分析报告。这份报告必须严格分为两个部分：第一部分是对文章核心思想的摘要，第二部分是对其中所有投资策略的详细拆解。
 
 #### **输出要求**
@@ -70,10 +70,10 @@ const SYSTEM_PROMPT = `#### **角色与目标**
 
 ### **第三部分：因子表达式脚本**
 
-基于上述分析报告，生成 Python 因子表达式代码。命名规则：alpha_{类型}_{序号}
+基于上述分析报告，生成 Python 因子表达式代码。命名规则：alpha_{类型}_${uniqueId}_{序号}
 
 \`\`\`python
-def alpha_trend_001(df, params=None):
+def alpha_trend_${uniqueId}_001(df, params=None):
     '''
     因子描述
     Args:
@@ -86,13 +86,14 @@ def alpha_trend_001(df, params=None):
     if params is None:
         params = {}
     # 计算因子逻辑
-    return df[['instrument', 'date', 'alpha_trend_001']]
+    return df[['instrument', 'date', 'alpha_trend_${uniqueId}_001']]
 \`\`\`
 
-请为每个发现的策略都生成对应的Python因子代码。`
+请为每个发现的策略都生成对应的Python因子代码，并在每次生成的因子名中带上特别哈希串 ${uniqueId} 以防止与其他文章因子同名冲突。`
 
 // Models to try in order (most capable first)
 const MODELS = [
+  'gemini-3.1-flash-lite-preview',
   'gemini-2.5-flash',
   'gemini-2.5-pro',
   'gemini-2.0-flash-lite',
@@ -128,6 +129,74 @@ function saveReport(title: string, content: string): string | null {
   }
 }
 
+function extractAndSaveFactorCodes(fullReport: string, uniqueId: string) {
+  const BASE_DIR = '/Users/alpha/.openclaw/workspace-quant_engineer/skills/文章转因子'
+  const CUSTOM_DIR = path.join(BASE_DIR, 'factors', 'custom')
+  const FACTOR_INDEX1 = path.join(BASE_DIR, 'factors_index.json')
+  const FACTOR_INDEX2 = path.join(BASE_DIR, 'factors', 'factor_index.json')
+
+  try {
+    if (!fs.existsSync(CUSTOM_DIR)) fs.mkdirSync(CUSTOM_DIR, { recursive: true })
+
+    // Find all python blocks containing "def alpha_"
+    const pyBlocks = [...fullReport.matchAll(/```(?:python)?\n([\s\S]*?)```/gi)]
+    
+    // Read existing indexes
+    let idx1 = { factors: [] as any[] }
+    let idx2 = { factors: [] as any[] }
+    try { if (fs.existsSync(FACTOR_INDEX1)) idx1 = JSON.parse(fs.readFileSync(FACTOR_INDEX1, 'utf-8')) } catch (e) {}
+    try { if (fs.existsSync(FACTOR_INDEX2)) idx2 = JSON.parse(fs.readFileSync(FACTOR_INDEX2, 'utf-8')) } catch (e) {}
+
+    pyBlocks.forEach(blockMatch => {
+      const blockCode = blockMatch[1]
+      
+      // Match each individual alpha_ function within the block
+      const functionRegex = /^[ \t]*def\s+(alpha_\w+)[\s\S]*?(?=\n[ \t]*def\s+alpha_|$)/gm
+      const functionMatches = [...blockCode.matchAll(functionRegex)]
+
+      functionMatches.forEach(match => {
+        const factorName = match[1]
+        const code = match[0].trim()
+        
+        // Save to .py file
+        const pyPath = path.join(CUSTOM_DIR, `${factorName}.py`)
+        const pyContent = `# -*- coding: utf-8 -*-\n"""\n自定义因子: ${factorName}\n"""\nimport sys\nimport os\nimport pandas as pd\nimport numpy as np\nsys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))\n\ntry:\n    from core.core_functions import *\nexcept ImportError:\n    pass\n\n${code}`
+        fs.writeFileSync(pyPath, pyContent, 'utf-8')
+
+        // Attempt rough fields extraction
+        const fields: string[] = []
+        for (const field of ['open', 'high', 'low', 'close', 'volume', 'amount', 'vwap', 'turn', 'returns']) {
+          if (code.includes(`'${field}'`) || code.includes(`"${field}"`)) fields.push(field)
+        }
+
+        const newEntry = {
+          name: factorName,
+          category: 'custom',
+          logic_summary: `基于解析报告生成 ${uniqueId}`,
+          formula_code: code.trim(),
+          data_fields: fields
+        }
+
+        // Add to Index1 if not exist
+        const e1 = idx1.factors.find((f: any) => f.name === factorName)
+        if (e1) Object.assign(e1, newEntry); else idx1.factors.push(newEntry)
+
+        // Add to Index2 if not exist
+        const e2 = idx2.factors.find((f: any) => f.name === factorName)
+        if (e2) Object.assign(e2, newEntry); else idx2.factors.push(newEntry)
+      })
+    })
+
+    // Save indexes
+    if (!fs.existsSync(path.dirname(FACTOR_INDEX2))) fs.mkdirSync(path.dirname(FACTOR_INDEX2), { recursive: true })
+    fs.writeFileSync(FACTOR_INDEX1, JSON.stringify(idx1, null, 2), 'utf-8')
+    fs.writeFileSync(FACTOR_INDEX2, JSON.stringify(idx2, null, 2), 'utf-8')
+
+  } catch (e) {
+    console.error("[Factor Extraction] Failed to save python factors to index", e)
+  }
+}
+
 // Retry helper with exponential backoff
 async function retryWithBackoff<T>(
   fn: () => Promise<T>,
@@ -156,7 +225,7 @@ async function retryWithBackoff<T>(
   throw lastError
 }
 
-function parseReport(fullReport: string) {
+function parseReport(fullReport: string, uniqueId: string) {
   let part1 = ''
   let part2 = ''
 
@@ -193,7 +262,7 @@ function parseReport(fullReport: string) {
 
   if (factors.length === 0) {
     factors.push({
-      name: 'alpha_custom_001',
+      name: `alpha_custom_${uniqueId}_001`,
       description: '基于输入内容生成的量化因子',
       params: [{ name: 'window', default: 20, description: '回看周期' }]
     })
@@ -225,10 +294,12 @@ export async function POST(request: NextRequest) {
     let sourceTitle = '未命名'
     let promptContents: any
 
+    const uniqueId = Math.random().toString(36).substring(2, 6)
+
     if (fileBase64) {
       sourceTitle = filename || '上传文档'
       promptContents = [
-        `${SYSTEM_PROMPT}\n\n---\n\n请分析以下提供的文档内容并严格按照模板要求生成报告：`,
+        `${getSystemPrompt(uniqueId)}\n\n---\n\n请分析以下提供的文档内容并严格按照模板要求生成报告：`,
         {
           inlineData: {
             data: fileBase64,
@@ -267,7 +338,7 @@ export async function POST(request: NextRequest) {
         content = content.slice(0, maxChars) + '\n\n[内容已截断...]'
       }
       
-      promptContents = `${SYSTEM_PROMPT}\n\n---\n\n请分析以下内容并严格按照模板要求生成报告：\n\n${content}`
+      promptContents = `${getSystemPrompt(uniqueId)}\n\n---\n\n请分析以下内容并严格按照模板要求生成报告：\n\n${content}`
     }
 
     // Try models in order with retry
@@ -331,10 +402,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Parse the report
-    const { title, part1, part2, factors } = parseReport(fullReport)
+    const { title, part1, part2, factors } = parseReport(fullReport, uniqueId)
 
     // Save report locally
     const savedFilename = saveReport(sourceTitle, fullReport)
+
+    // Extract python code blocks to files & update JSON indexes
+    extractAndSaveFactorCodes(fullReport, uniqueId)
 
     return NextResponse.json({
       success: true,

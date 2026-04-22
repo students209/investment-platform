@@ -25,22 +25,44 @@ export default async function NewsPage() {
               key={report.slug} 
               className="bg-white rounded-lg shadow hover:shadow-lg transition-shadow p-6 flex flex-col"
             >
-              <div className="flex items-start justify-between mb-3">
-                <span className="text-sm text-gray-500">{report.date}</span>
-                {report.tags?.[0] && (
+              <div className="flex items-center justify-between mb-3 pb-2 border-b border-gray-100">
+                <span className="text-sm font-medium text-gray-500">
+                  {report.date} {report.weekday ? `(${report.weekday})` : ''}
+                </span>
+              </div>
+              <h2 className="text-lg font-bold text-gray-900 mb-3 line-clamp-2 leading-snug">
+                {report.title}
+              </h2>
+              
+              {report.cover_tags && report.cover_tags.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5 mb-3">
+                  {report.cover_tags.map(tag => (
+                    <span key={tag} className="px-2.5 py-1 bg-gray-50 text-gray-600 text-xs rounded-md border border-gray-200">
+                      #{tag}
+                    </span>
+                  ))}
+                </div>
+              ) : report.tags && report.tags.length > 0 && (
+                <div className="flex flex-wrap gap-1 mb-3">
                   <span className="px-2 py-1 bg-emerald-100 text-emerald-700 text-xs rounded">
                     {report.tags[0]}
                   </span>
+                </div>
+              )}
+
+              <div className="flex-1 mt-1">
+                {report.summary ? (
+                  <div className="bg-gray-50/80 p-3 rounded-lg border border-gray-100">
+                    <p className="text-gray-600 text-sm line-clamp-4 leading-relaxed">
+                      {report.summary}
+                    </p>
+                  </div>
+                ) : report.excerpt && (
+                  <p className="text-gray-600 text-sm line-clamp-4 leading-relaxed">
+                    {report.excerpt}
+                  </p>
                 )}
               </div>
-              <h2 className="text-lg font-semibold text-gray-900 mb-3 line-clamp-2">
-                {report.title}
-              </h2>
-              {(report.excerpt || report.summary) && (
-                <p className="text-gray-600 text-sm line-clamp-4 flex-1 whitespace-pre-line">
-                  {report.excerpt || report.summary}
-                </p>
-              )}
               <div className="mt-4 pt-4 border-t">
                 <Link 
                   href={`/news/${report.slug}`}
