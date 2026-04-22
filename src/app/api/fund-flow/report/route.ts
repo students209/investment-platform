@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 
-const DIR_PATH = '/Users/alpha/Documents/learn/openclaw_project/teamwork_html/docs/insights/资金流看板';
+const DIR_PATH = '/Users/alpha/Documents/learn/quant/资金流看板2.0/output';
 
 export async function GET(request: Request) {
   try {
